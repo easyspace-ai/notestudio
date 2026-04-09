@@ -20,9 +20,12 @@ const DefaultPreloadedSkillsDir = "skills/preloaded"
 // DefaultPublicSkillsDir is the directory for operator-managed public skills (alongside preloaded).
 const DefaultPublicSkillsDir = "skills/pubic"
 
+// DefaultXiuMeiSkillsDir is the directory for "秀梅" namespace public skills.
+const DefaultXiuMeiSkillsDir = "skills/秀梅"
+
 // DefaultSkillParentDirs are relative paths passed to the agent runtime (cwd = process working directory).
 func DefaultSkillParentDirs() []string {
-	return []string{DefaultPreloadedSkillsDir, DefaultPublicSkillsDir}
+	return []string{DefaultPreloadedSkillsDir, DefaultPublicSkillsDir, DefaultXiuMeiSkillsDir}
 }
 
 // skillService implements SkillService interface
@@ -70,8 +73,10 @@ func getPreloadedSkillsDir() string {
 
 func (s *skillService) skillSearchDirs() []string {
 	pre := s.preloadedDir
-	pub := filepath.Join(filepath.Dir(pre), "pubic")
-	return []string{pre, pub}
+	base := filepath.Dir(pre)
+	pub := filepath.Join(base, "pubic")
+	xm := filepath.Join(base, "秀梅")
+	return []string{pre, pub, xm}
 }
 
 func (s *skillService) absSkillRoots() ([]string, error) {
