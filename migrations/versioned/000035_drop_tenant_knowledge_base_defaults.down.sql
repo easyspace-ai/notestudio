@@ -1,0 +1,1 @@
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS knowledge_base_defaults JSONB DEFAULT NULL;
