@@ -24,6 +24,7 @@ type studioService struct {
 	modelService interfaces.ModelService
 	fileService  interfaces.FileService
 	msgService   interfaces.MessageService
+	skillService interfaces.SkillService
 }
 
 // NewStudioService constructs the Studio API + async processor.
@@ -35,6 +36,7 @@ func NewStudioService(
 	modelService interfaces.ModelService,
 	fileService interfaces.FileService,
 	msgService interfaces.MessageService,
+	skillService interfaces.SkillService,
 ) interfaces.StudioService {
 	return &studioService{
 		repo:         repo,
@@ -44,6 +46,7 @@ func NewStudioService(
 		modelService: modelService,
 		fileService:  fileService,
 		msgService:   msgService,
+		skillService: skillService,
 	}
 }
 
@@ -213,8 +216,26 @@ func (s *studioService) runHTMLJob(ctx context.Context, job *types.StudioJob, pa
 	if lang == "" {
 		lang = "zh-CN"
 	}
+
+	// Load webpage-generator skill instructions for better HTML generation quality
+	var skillContent string
+	if s.skillService != nil {
+		skillCtx := context.Background()
+		skill, err := s.skillService.GetSkillByName(skillCtx, "webpage-generator")
+		if err == nil && skill != nil {
+			skillContent = skill.Instructions
+			logger.Infof(ctx, "studio: loaded webpage-generator skill for job %s", job.ID)
+		} else {
+			logger.Warnf(ctx, "studio: failed to load webpage-generator skill for job %s: %v", job.ID, err)
+		}
+	}
+
 	sys := fmt.Sprintf(`You are a web developer. Generate a single self-contained HTML5 document (one file) for the user's request.
 Use language/locale: %s. Include minimal inline CSS if needed. Output ONLY raw HTML, no markdown code fences.`, lang)
+	if skillContent != "" {
+		sys += "\n\nFollow the skill instructions below when generating the HTML page:\n" + skillContent
+	}
+
 	user := fmt.Sprintf("Page title / topic: %s\n\n", payload.Title)
 	if transcript.Len() > 0 {
 		user += "Context from project chat (optional):\n" + transcript.String() + "\n\n"
