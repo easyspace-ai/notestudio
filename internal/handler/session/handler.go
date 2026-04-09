@@ -3,6 +3,7 @@ package session
 import (
 	"net/http"
 
+	"github.com/Tencent/WeKnora/internal/application/executor"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -25,6 +26,7 @@ type Handler struct {
 	fileService          interfaces.FileService          // Service for file storage (image uploads)
 	modelService         interfaces.ModelService         // Service for model management (VLM access)
 	projectService       interfaces.ProjectService       // MetaNote projects (optional; nil disables linking)
+	executorFactory      *executor.ExecutorFactory       // Factory for creating executors
 }
 
 // NewHandler creates a new instance of Handler with all necessary dependencies
@@ -53,6 +55,7 @@ func NewHandler(
 		fileService:          fileService,
 		modelService:         modelService,
 		projectService:       projectService,
+		executorFactory:      executor.NewExecutorFactory(sessionService),
 	}
 }
 

@@ -559,18 +559,17 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 		// Run VLM image analysis if applicable
 		h.runVLMAnalysisIfNeeded(streamCtx, reqCtx, mode)
 
-		// Build QA request and invoke the appropriate service
+		// Build QA request and invoke the appropriate service through Executor
 		qaReq := reqCtx.buildQARequest()
 
 		var serviceErr error
 		var stageName string
-		if mode == qaModeNormal {
-			stageName = "knowledge_qa_execution"
-			serviceErr = h.sessionService.KnowledgeQA(streamCtx.asyncCtx, qaReq, streamCtx.eventBus)
-		} else {
-			stageName = "agent_execution"
-			serviceErr = h.sessionService.AgentQA(streamCtx.asyncCtx, qaReq, streamCtx.eventBus)
-		}
+
+		// Use ExecutorFactory to create and run the appropriate executor
+		exec := h.executorFactory.CreateExecutor(qaReq)
+		stageName = exec.Name() + "_execution"
+		logger.Infof(streamCtx.asyncCtx, "Using executor: %s for session: %s", exec.Name(), sessionID)
+		serviceErr = exec.Execute(streamCtx.asyncCtx, qaReq, streamCtx.eventBus)
 
 		if serviceErr != nil {
 			logger.ErrorWithFields(streamCtx.asyncCtx, serviceErr, nil)
