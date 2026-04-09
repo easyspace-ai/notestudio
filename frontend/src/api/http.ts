@@ -261,5 +261,7 @@ export async function apiFetchBlob(path: string, init?: ApiFetchInit): Promise<B
     const msg = parsed || (typeof text === "string" && text.trim() ? text : res.statusText);
     throw new ApiError(msg, res.status, data);
   }
-  return res.blob();
+  const contentType = res.headers.get("Content-Type") || "application/octet-stream";
+  const arrayBuffer = await res.arrayBuffer();
+  return new Blob([arrayBuffer], { type: contentType });
 }
