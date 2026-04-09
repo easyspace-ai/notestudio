@@ -87,6 +87,12 @@ func DefaultAllowedTools() []string {
 		ToolDatabaseQuery,
 		ToolDataAnalysis,
 		ToolDataSchema,
+		ToolReadSkill,
+		ToolReadFile,
+		ToolWriteFile,
+		ToolStrReplace,
+		ToolLs,
+		ToolGlob,
 		ToolFinalAnswer,
 	}
 }

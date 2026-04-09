@@ -347,8 +347,14 @@ func (s *sessionService) GenerateTitle(ctx context.Context,
 		return "", errors.New("session cannot be empty")
 	}
 
-	// Skip if title already exists
-	if session.Title != "" {
+	// Skip if title already exists and is not a default title
+	defaultTitles := map[string]bool{
+		"":          true,
+		"新对话":     true,
+		"New conversation": true,
+		"未命名对话":   true,
+	}
+	if !defaultTitles[session.Title] {
 		return session.Title, nil
 	}
 	var err error
@@ -474,8 +480,14 @@ func (s *sessionService) GenerateTitleAsync(
 			bgCtx = context.WithValue(bgCtx, types.LanguageContextKey, language)
 		}
 
-		// Skip if title already exists
-		if session.Title != "" {
+		// Skip if title already exists and is not a default title
+		defaultTitles := map[string]bool{
+			"":          true,
+			"新对话":     true,
+			"New conversation": true,
+			"未命名对话":   true,
+		}
+		if !defaultTitles[session.Title] {
 			return
 		}
 

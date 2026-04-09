@@ -17,6 +17,16 @@ export const streamdownPlugins = {
   ] as StreamdownProps["rehypePlugins"],
 };
 
+// Assistant chat content must not render raw HTML inline, otherwise generated
+// <style>/<html>/<body> blocks can escape the bubble and pollute the whole app.
+export const assistantStreamdownPlugins = {
+  remarkPlugins: [
+    remarkGfm,
+    [remarkMath, { singleDollarTextMath: true }],
+  ] as StreamdownProps["remarkPlugins"],
+  rehypePlugins: [[rehypeKatex, { output: "html" }]] as StreamdownProps["rehypePlugins"],
+};
+
 export const streamdownPluginsWithWordAnimation = {
   remarkPlugins: [
     remarkGfm,

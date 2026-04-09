@@ -54,7 +54,8 @@ const router = createRouter({
           path: "settings",
           name: "settings",
           component: () => import("../views/settings/Settings.vue"),
-          meta: { requiresInit: true, requiresAuth: true, requiresTenantUI: true }
+          // 平台控制台需能打开全局设置（含模型管理）；勿标 requiresTenantUI，否则会被守卫重定向到知识库
+          meta: { requiresInit: true, requiresAuth: true, requiresTenantUI: false }
         },
         {
           path: "models",

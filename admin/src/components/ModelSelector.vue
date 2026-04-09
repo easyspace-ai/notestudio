@@ -10,6 +10,18 @@
       style="width: 100%;"
     >
       <!-- 已有的模型选项 -->
+      <!-- 列表未拉到或 401 时：仍有已保存的 model_id，补一条选项避免下拉框只显示裸 UUID -->
+      <t-option
+        v-if="hasOrphanSelection"
+        :key="'orphan-' + selectedModelId"
+        :value="selectedModelId"
+        :label="orphanLabel"
+      >
+        <div class="model-option">
+          <t-icon name="info-circle" class="model-icon" />
+          <span class="model-name">{{ orphanLabel }}</span>
+        </div>
+      </t-option>
       <t-option
         v-for="model in models"
         :key="model.id"
@@ -82,6 +94,18 @@ watch(() => props.allModels, (newModels) => {
 const selectedModel = computed(() => {
   if (!props.selectedModelId) return null
   return models.value.find(m => m.id === props.selectedModelId)
+})
+
+const hasOrphanSelection = computed(() => {
+  const id = props.selectedModelId
+  if (!id || id === '__add_model__') return false
+  return !models.value.some(m => m.id === id)
+})
+
+const orphanLabel = computed(() => {
+  const id = props.selectedModelId || ''
+  if (id.length <= 24) return id
+  return `${id.slice(0, 10)}…${id.slice(-6)}`
 })
 
 // 加载模型列表（仅在未提供 allModels 时调用）

@@ -76,11 +76,54 @@ func isNoAuthAPI(path string, method string) bool {
 	return false
 }
 
-// platformAdminTenantProxyPrefixes are normal tenant-scoped APIs the platform admin may call with Bearer admin JWT + X-Tenant-ID.
+// platformAdminTenantProxyPath lists tenant-scoped APIs the platform admin may call with Bearer admin JWT + X-Tenant-ID.
+// Must stay in sync with admin/src/utils/request.ts shouldUsePlatformTenantProxy (except Ollama-only paths).
 func platformAdminTenantProxyPath(p string) bool {
-	return strings.HasPrefix(p, "/api/v1/agents") ||
-		strings.HasPrefix(p, "/api/v1/mcp-services") ||
-		strings.HasPrefix(p, "/api/v1/skills")
+	p = normalizeAuthPath(p)
+	prefixes := []string{
+		"/api/v1/agents",
+		"/api/v1/mcp-services",
+		"/api/v1/skills",
+		"/api/v1/models",
+		"/api/v1/knowledge-bases",
+		"/api/v1/shared-knowledge-bases",
+		"/api/v1/shared-agents",
+		"/api/v1/organizations",
+		"/api/v1/tenants/kv/",
+		"/api/v1/web-search-providers",
+		"/api/v1/system/storage-engine-status",
+		"/api/v1/auth/me",
+		"/api/v1/auth/tenant",
+	}
+	for _, pre := range prefixes {
+		if strings.HasPrefix(p, pre) {
+			return true
+		}
+	}
+	return false
+}
+
+// platformAdminJWTOnlyNoTenantPath: valid admin JWT is enough (no X-Tenant-ID). Handled by tryPlatformAdminJWTOnlyAuth.
+func platformAdminJWTOnlyNoTenantPath(p string, method string) bool {
+	p = normalizeAuthPath(p)
+	m := strings.ToUpper(strings.TrimSpace(method))
+	switch m {
+	case http.MethodGet:
+		if strings.HasPrefix(p, "/api/v1/system/info") {
+			return true
+		}
+		if strings.HasPrefix(p, "/api/v1/system/parser-engines") && !strings.HasPrefix(p, "/api/v1/system/parser-engines/check") {
+			return true
+		}
+	case http.MethodPost:
+		if strings.HasPrefix(p, "/api/v1/system/parser-engines/check") {
+			return true
+		}
+		if strings.HasPrefix(p, "/api/v1/system/docreader/reconnect") {
+			return true
+		}
+	}
+	return false
 }
 
 // tryPlatformAdminTenantAuth validates a platform admin JWT and injects tenant + synthetic user so handlers reuse tenant APIs.
@@ -95,6 +138,9 @@ func tryPlatformAdminTenantAuth(
 		return false
 	}
 	p := normalizeAuthPath(incomingRequestPath(c))
+	if platformAdminJWTOnlyNoTenantPath(p, c.Request.Method) {
+		return false
+	}
 	if !platformAdminTenantProxyPath(p) {
 		return false
 	}
@@ -142,6 +188,78 @@ func tryPlatformAdminTenantAuth(
 			types.UserIDContextKey, u.ID,
 		),
 	)
+	c.Next()
+	return true
+}
+
+func tryPlatformAdminJWTOnlyAuth(
+	c *gin.Context,
+	token string,
+	adminAuth interfaces.PlatformAdminAuthService,
+) bool {
+	p := normalizeAuthPath(incomingRequestPath(c))
+	if !platformAdminJWTOnlyNoTenantPath(p, c.Request.Method) {
+		return false
+	}
+	adm, err := adminAuth.ValidateAdminToken(c.Request.Context(), token)
+	if err != nil || adm == nil {
+		return false
+	}
+	c.Set(types.AdminContextKey, adm)
+	u := &types.User{
+		ID:                  adm.ID,
+		Username:            "platform-admin",
+		Email:               adm.Email,
+		TenantID:            0,
+		IsActive:            true,
+		CanAccessAllTenants: true,
+	}
+	c.Set(types.UserContextKey.String(), u)
+	c.Set(types.UserIDContextKey.String(), u.ID)
+	ctx := context.WithValue(
+		context.WithValue(c.Request.Context(), types.UserContextKey, u),
+		types.UserIDContextKey, u.ID,
+	)
+	c.Request = c.Request.WithContext(ctx)
+	c.Next()
+	return true
+}
+
+// platformAdminOllamaInitPath matches Ollama 检测/列表/下载等接口：不依赖租户上下文，
+// 平台管理员仅持有 admin JWT、未选「管理租户」时也应能打开 Ollama 设置页。
+func platformAdminOllamaInitPath(p string) bool {
+	return strings.HasPrefix(p, "/api/v1/initialization/ollama")
+}
+
+func tryPlatformAdminOllamaInitAuth(
+	c *gin.Context,
+	token string,
+	adminAuth interfaces.PlatformAdminAuthService,
+) bool {
+	adm, err := adminAuth.ValidateAdminToken(c.Request.Context(), token)
+	if err != nil || adm == nil {
+		return false
+	}
+	p := normalizeAuthPath(incomingRequestPath(c))
+	if !platformAdminOllamaInitPath(p) {
+		return false
+	}
+	c.Set(types.AdminContextKey, adm)
+	u := &types.User{
+		ID:                  adm.ID,
+		Username:            "platform-admin",
+		Email:               adm.Email,
+		TenantID:            0,
+		IsActive:            true,
+		CanAccessAllTenants: true,
+	}
+	c.Set(types.UserContextKey.String(), u)
+	c.Set(types.UserIDContextKey.String(), u.ID)
+	ctx := context.WithValue(
+		context.WithValue(c.Request.Context(), types.UserContextKey, u),
+		types.UserIDContextKey, u.ID,
+	)
+	c.Request = c.Request.WithContext(ctx)
 	c.Next()
 	return true
 }
@@ -290,6 +408,12 @@ func Auth(
 				return
 			}
 			if tryPlatformAdminTenantAuth(c, token, adminAuth, tenantService) {
+				return
+			}
+			if tryPlatformAdminOllamaInitAuth(c, token, adminAuth) {
+				return
+			}
+			if tryPlatformAdminJWTOnlyAuth(c, token, adminAuth) {
 				return
 			}
 		}

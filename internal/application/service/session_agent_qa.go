@@ -91,14 +91,21 @@ func (s *sessionService) AgentQA(
 		return fmt.Errorf("failed to get chat model: %w", err)
 	}
 
-	// Get rerank model from custom agent config (only required when knowledge bases are configured)
+	// Rerank model: agent override, else tenant global retrieval config, else first platform rerank (same as SearchKnowledge)
 	var rerankModel rerank.Reranker
 	hasKnowledge := len(agentConfig.KnowledgeBases) > 0 || len(agentConfig.KnowledgeIDs) > 0
 	if hasKnowledge {
-		rerankModelID := req.CustomAgent.Config.RerankModelID
-		if rerankModelID == "" {
-			logger.Warnf(ctx, "No rerank model configured for custom agent %s, but knowledge bases are specified", req.CustomAgent.ID)
-			return errors.New("rerank model (rerank_model_id) is not configured in custom agent settings")
+		// Prefer DB-backed tenant row so retrieval_config / conversation_config are present (context stub may omit JSONB)
+		rerankTenant := tenantInfo
+		if s.tenantService != nil {
+			if t, err := s.tenantService.GetTenantByID(ctx, agentTenantID); err == nil && t != nil {
+				rerankTenant = t
+			}
+		}
+		rerankModelID, resolveErr := s.resolveRerankModelID(ctx, req.CustomAgent, rerankTenant)
+		if resolveErr != nil {
+			logger.Warnf(ctx, "Rerank model resolution failed for agent %s: %v", req.CustomAgent.ID, resolveErr)
+			return resolveErr
 		}
 
 		rerankModel, err = s.modelService.GetRerankModel(ctx, rerankModelID)
@@ -304,14 +311,9 @@ func (s *sessionService) configureSkillsFromAgent(
 	if customAgent == nil {
 		return
 	}
-	// When sandbox is disabled, skills cannot be enabled (no script execution environment)
 	sandboxMode := os.Getenv("WEKNORA_SANDBOX_MODE")
 	if sandboxMode == "" || sandboxMode == "disabled" {
-		agentConfig.SkillsEnabled = false
-		agentConfig.SkillDirs = nil
-		agentConfig.AllowedSkills = nil
-		logger.Infof(ctx, "Sandbox is disabled: skills are not available")
-		return
+		logger.Infof(ctx, "Sandbox is disabled: skills remain readable, but script execution is unavailable")
 	}
 
 	switch customAgent.Config.SkillsSelectionMode {

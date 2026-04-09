@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import type { Edge, Node } from "@xyflow/react";
-import { ArrowUp, ChevronDown, Globe, Image as ImageIcon, AtSign, Sparkles, Brain, Square, Lightbulb } from "lucide-react";
+import { ArrowUp, ChevronDown, Globe, Image as ImageIcon, AtSign, Sparkles, Brain, Square, Lightbulb, Wand2, Presentation, FileCode } from "lucide-react";
 import { streamAgentChat } from "@/api/weknora/agentChatStream";
 import * as messagesApi from "@/api/weknora/messages";
 import * as agentsApi from "@/api/weknora/agents";
@@ -249,6 +249,7 @@ export function WeKnoraChatDock(props: {
   knowledgeDocCount?: number;
   knowledgeTitles?: string[];
   onFirstMessageComplete?: (sessionId: string, messages: { role: string; content: string }[]) => void;
+  onQuickSkill?: (kind: string, title: string) => void;
 }) {
   const {
     sessionId,
@@ -259,6 +260,7 @@ export function WeKnoraChatDock(props: {
     knowledgeDocCount = 0,
     knowledgeTitles = [],
     onFirstMessageComplete,
+    onQuickSkill,
   } = props;
 
   const qc = useQueryClient();
@@ -268,6 +270,7 @@ export function WeKnoraChatDock(props: {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [showMentionPopover, setShowMentionPopover] = useState(false);
+  const [showSkillPopover, setShowSkillPopover] = useState(false);
   const [knowledgeDocs, setKnowledgeDocs] = useState<{id: string; title: string}[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -419,6 +422,7 @@ export function WeKnoraChatDock(props: {
     abortRef.current?.abort();
     setIsStreaming(false);
     setStreamingText(null);
+    setStreamEvents([]);
   }, []);
 
   const sendMut = useMutation({
@@ -453,6 +457,7 @@ export function WeKnoraChatDock(props: {
             },
             onComplete: () => {
               setStreamingText(null);
+              setStreamEvents([]);
               setIsStreaming(false);
               void qc.invalidateQueries({ queryKey: ["weknora-messages", sessionId] });
 
@@ -461,8 +466,10 @@ export function WeKnoraChatDock(props: {
                 // Wait for history to refresh with new messages
                 setTimeout(() => {
                   void qc.fetchQuery({ queryKey: ["weknora-messages", sessionId] })
-                    .then((messages) => {
-                      const msgList = (messages as { data?: { role: string; content: string }[] }).data ?? [];
+                    .then((raw) => {
+                      const msgList = Array.isArray(raw)
+                        ? raw
+                        : ((raw as { data?: { role: string; content: string }[] })?.data ?? []);
                       if (msgList.length >= 2) {
                         onFirstMessageComplete(sessionId, msgList.map((m) => ({
                           role: m.role,
@@ -836,6 +843,64 @@ export function WeKnoraChatDock(props: {
                   >
                     <AtSign className="h-4 w-4" />
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowSkillPopover((v) => !v)}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                    title="技能生成"
+                  >
+                    <Wand2 className="h-4 w-4" />
+                  </button>
+
+                  {/* Skill Popover */}
+                  {showSkillPopover && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowSkillPopover(false)}
+                      />
+                      <div className="absolute left-12 bottom-12 z-50 w-64 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+                        <div className="mb-2 px-2 py-1 text-xs font-medium text-gray-500">
+                          选择技能
+                        </div>
+                        <ul className="max-h-48 overflow-y-auto">
+                          <li>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onQuickSkill?.("slides", "PPT演示文稿");
+                                setShowSkillPopover(false);
+                              }}
+                              className="w-full truncate rounded-lg px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                              title="HTML PPT 精致演示文稿设计器"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Presentation className="h-4 w-4 text-indigo-500" />
+                                <span>生成 PPT 演示文稿</span>
+                              </div>
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onQuickSkill?.("html", "教学网页");
+                                setShowSkillPopover(false);
+                              }}
+                              className="w-full truncate rounded-lg px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                              title="网页生成器"
+                            >
+                              <div className="flex items-center gap-2">
+                                <FileCode className="h-4 w-4 text-emerald-500" />
+                                <span>生成教学网页</span>
+                              </div>
+                            </button>
+                          </li>
+                        </ul>
+                      </div>
+                    </>
+                  )}
 
                   {/* Mention Popover */}
                   {showMentionPopover && (

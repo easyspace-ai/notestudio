@@ -844,11 +844,8 @@ func (h *InitializationHandler) CheckOllamaStatus(c *gin.Context) {
 
 	logger.Info(ctx, "Checking Ollama service status")
 
-	// Determine Ollama base URL for display
-	baseURL := os.Getenv("OLLAMA_BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://host.docker.internal:11434"
-	}
+	// 与 OllamaService 实际使用的地址一致（避免未设置 OLLAMA_BASE_URL 时 UI 显示 host.docker.internal 而进程连的是 localhost）
+	baseURL := h.ollamaService.BaseURL()
 
 	// 检查Ollama服务是否可用
 	err := h.ollamaService.StartService(ctx)

@@ -11,6 +11,9 @@
       <RouterLink class="nav-item" to="/platform/sessions" active-class="active">
         <t-icon name="chat" /> 会话
       </RouterLink>
+      <RouterLink class="nav-item" to="/platform/settings" active-class="active">
+        <t-icon name="setting" /> 全局设置
+      </RouterLink>
       <RouterLink class="nav-item" to="/platform/models" active-class="active">
         <t-icon name="control-platform" /> 全局模型
       </RouterLink>

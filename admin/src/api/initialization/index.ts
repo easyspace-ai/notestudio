@@ -149,11 +149,22 @@ export function checkOllamaStatus(): Promise<{ available: boolean; version?: str
     return new Promise((resolve, reject) => {
         get('/api/v1/initialization/ollama/status')
             .then((response: any) => {
-                resolve(response.data || { available: false });
+                // 拦截器已返回 axios 的 body：通常为 { success, data: { available, baseUrl, ... } }
+                const inner = response?.data !== undefined ? response.data : response;
+                const baseUrl = typeof inner?.baseUrl === 'string' ? inner.baseUrl : undefined;
+                resolve({
+                    available: !!inner?.available,
+                    version: inner?.version,
+                    error: typeof inner?.error === 'string' ? inner.error : undefined,
+                    baseUrl,
+                });
             })
             .catch((error: any) => {
                 console.error('Failed to check Ollama status:', error);
-                resolve({ available: false, error: error.message || t('error.initialization.checkFailed') });
+                resolve({
+                    available: false,
+                    error: error.message || t('error.initialization.checkFailed'),
+                });
             });
     });
 }

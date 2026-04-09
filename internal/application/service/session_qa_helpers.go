@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -74,6 +76,42 @@ func (s *sessionService) resolveChatModelID(
 		return customAgent.Config.ModelID, nil
 	}
 	return s.selectChatModelID(ctx, session, knowledgeBaseIDs, knowledgeIDs)
+}
+
+// resolveRerankModelID picks the rerank model for agent QA when knowledge retrieval is used.
+// Priority (aligned with SearchKnowledge):
+//  1. Custom agent's rerank_model_id
+//  2. Tenant RetrievalConfig.rerank_model_id (global retrieval / 全局检索设置)
+//  3. Deprecated tenant ConversationConfig.rerank_model_id
+//  4. First available platform catalog rerank model
+func (s *sessionService) resolveRerankModelID(
+	ctx context.Context,
+	customAgent *types.CustomAgent,
+	tenantInfo *types.Tenant,
+) (string, error) {
+	if customAgent != nil && customAgent.Config.RerankModelID != "" {
+		logger.Infof(ctx, "Using custom agent rerank_model_id: %s", customAgent.Config.RerankModelID)
+		return customAgent.Config.RerankModelID, nil
+	}
+	if tenantInfo != nil && tenantInfo.RetrievalConfig != nil && tenantInfo.RetrievalConfig.RerankModelID != "" {
+		logger.Infof(ctx, "Using tenant retrieval_config rerank_model_id: %s", tenantInfo.RetrievalConfig.RerankModelID)
+		return tenantInfo.RetrievalConfig.RerankModelID, nil
+	}
+	if tenantInfo != nil && tenantInfo.ConversationConfig != nil && tenantInfo.ConversationConfig.RerankModelID != "" {
+		logger.Infof(ctx, "Using tenant conversation_config rerank_model_id: %s", tenantInfo.ConversationConfig.RerankModelID)
+		return tenantInfo.ConversationConfig.RerankModelID, nil
+	}
+	models, err := s.modelService.ListModels(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list models for rerank fallback: %w", err)
+	}
+	for _, model := range models {
+		if model != nil && model.Type == types.ModelTypeRerank {
+			logger.Infof(ctx, "Using first platform rerank model: %s", model.ID)
+			return model.ID, nil
+		}
+	}
+	return "", errors.New("no rerank model: set rerank on the agent, in tenant retrieval settings, or add a rerank model to the platform")
 }
 
 // resolveRetrievalTenantID determines the tenant ID to use for retrieval scope.

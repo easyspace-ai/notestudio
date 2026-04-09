@@ -335,6 +335,7 @@ const groupedSessions = computed(() => {
 });
 
 const loading = ref(false)
+const creatingSession = ref(false)
 const mouseenteBotDownr = (val: string) => {
     activeSubmenu.value = val;
 }
@@ -509,8 +510,13 @@ const getMessageList = async (isLoadMore = false) => {
     
     return getSessionsList(currentPage.value, page_size.value).then((res: any) => {
         if (res.data && res.data.length) {
+            const sessions = [...res.data].sort((a: any, b: any) => {
+                const aTime = new Date(a.updated_at || a.created_at || 0).getTime();
+                const bTime = new Date(b.updated_at || b.created_at || 0).getTime();
+                return bTime - aTime;
+            });
             // Display all sessions globally without filtering
-            res.data.forEach((item: any) => {
+            sessions.forEach((item: any) => {
                 let obj = { 
                     title: item.title ? item.title : t('menu.newSession'),
                     path: `chat/${item.id}`, 
@@ -530,6 +536,35 @@ const getMessageList = async (isLoadMore = false) => {
     }).catch(() => {
         loading.value = false;
     })
+}
+
+const createAndOpenSession = async () => {
+    if (creatingSession.value) return;
+    creatingSession.value = true;
+    try {
+        const res = await createSessions({});
+        if (res?.data?.id) {
+            const sessionId = res.data.id;
+            const now = new Date().toISOString();
+            usemenuStore.updataMenuChildren({
+                title: t('menu.newSession'),
+                path: `chat/${sessionId}`,
+                id: sessionId,
+                isMore: false,
+                isNoTitle: true,
+                created_at: now,
+                updated_at: now
+            });
+            router.push(`/platform/chat/${sessionId}`);
+            return;
+        }
+        MessagePlugin.error(t('createChat.messages.createFailed'));
+    } catch (error) {
+        console.error('Create empty session failed:', error);
+        MessagePlugin.error(t('createChat.messages.createError'));
+    } finally {
+        creatingSession.value = false;
+    }
 }
 
 onMounted(async () => {
@@ -700,13 +735,7 @@ const gotopage = async (path: string) => {
         return;
     } else {
         if (path === 'creatChat') {
-            // 如果在知识库详情页，跳转到全局对话创建页
-            if (isInKnowledgeBase.value) {
-                router.push('/platform/creatChat')
-            } else {
-                // 如果不在知识库内，进入对话创建页
-                router.push(`/platform/creatChat`)
-            }
+            await createAndOpenSession()
         } else {
             router.push(`/platform/${path}`);
         }

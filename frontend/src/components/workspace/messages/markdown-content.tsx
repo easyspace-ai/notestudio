@@ -7,7 +7,7 @@ import {
   MessageResponse,
   type MessageResponseProps,
 } from "@/components/ai-elements/message";
-import { streamdownPlugins } from "@/core/streamdown";
+import { assistantStreamdownPlugins } from "@/core/streamdown";
 import { cn } from "@/lib/utils";
 
 import { CitationLink } from "../citations/citation-link";
@@ -30,7 +30,7 @@ export function MarkdownContent({
   content,
   rehypePlugins,
   className,
-  remarkPlugins = streamdownPlugins.remarkPlugins,
+  remarkPlugins = assistantStreamdownPlugins.remarkPlugins,
   components: componentsFromProps,
 }: MarkdownContentProps) {
   const components = useMemo(() => {

@@ -40,7 +40,14 @@ function shouldUsePlatformTenantProxy(reqUrl: string): boolean {
     reqUrl.includes('/api/v1/organizations') ||
     reqUrl.includes('/api/v1/tenants/kv/') ||
     reqUrl.includes('/api/v1/web-search-providers') ||
-    reqUrl.includes('/api/v1/system/storage-engine-status')
+    reqUrl.includes('/api/v1/system/storage-engine-status') ||
+    reqUrl.includes('/api/v1/system/info') ||
+    reqUrl.includes('/api/v1/system/parser-engines') ||
+    reqUrl.includes('/api/v1/system/docreader/reconnect') ||
+    reqUrl.includes('/api/v1/auth/me') ||
+    reqUrl.includes('/api/v1/auth/tenant') ||
+    // 平台管理员未登录终端用户时：Ollama 状态/模型等需带 admin JWT（见 middleware tryPlatformAdminOllamaInitAuth）
+    reqUrl.includes('/api/v1/initialization/ollama')
   )
 }
 

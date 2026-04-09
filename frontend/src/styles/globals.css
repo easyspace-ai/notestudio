@@ -420,3 +420,32 @@
   --container-width-md: calc(var(--spacing) * 204);
   --container-width-lg: calc(var(--spacing) * 256);
 }
+
+/* DOCX inline preview (docx-preview), aligned with KnowHow document-preview.vue */
+.docx-preview-wrapper {
+  padding: 20px;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+}
+
+.docx-preview-wrapper * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.docx-preview-wrapper table {
+  width: 100%;
+  table-layout: auto;
+  overflow-wrap: break-word;
+}
+
+.docx-preview-wrapper img {
+  max-width: 100%;
+  height: auto;
+}
+
+.docx-preview-wrapper [style*="width"] {
+  max-width: 100% !important;
+}

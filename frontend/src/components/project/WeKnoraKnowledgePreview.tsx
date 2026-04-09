@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Download, Loader2, X } from "lucide-react";
 import { Streamdown } from "streamdown";
 import type { WeKnoraKnowledge } from "@/api/weknora/types";
@@ -13,6 +13,10 @@ function effectiveMime(fileName: string, blobType: string): string {
   if (m && m !== "application/octet-stream") return blobType.split(";")[0]!.trim();
   const lower = fileName.toLowerCase();
   if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".docx")) {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+  if (lower.endsWith(".doc")) return "application/msword";
   if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "text/markdown";
   if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
   if (lower.endsWith(".txt")) return "text/plain";
@@ -36,6 +40,79 @@ function isTextualMime(mime: string): boolean {
     m === "application/xml" ||
     m.endsWith("+json") ||
     m.endsWith("+xml")
+  );
+}
+
+function isDocxFile(name: string, mime: string): boolean {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".docx")) return true;
+  const m = mime.toLowerCase().split(";")[0]!.trim();
+  return m === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+}
+
+/** Legacy .doc (OLE); docx-preview only supports OOXML .docx. */
+function isLegacyDocFile(name: string, mime: string): boolean {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".doc") && !lower.endsWith(".docx")) return true;
+  const m = mime.toLowerCase().split(";")[0]!.trim();
+  return m === "application/msword";
+}
+
+function DocxPreview({ blob }: { blob: Blob }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [docxBusy, setDocxBusy] = useState(true);
+  const [docxErr, setDocxErr] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let cancelled = false;
+    setDocxErr(null);
+    setDocxBusy(true);
+    el.innerHTML = "";
+
+    void (async () => {
+      try {
+        const { renderAsync } = await import("docx-preview");
+        if (cancelled) return;
+        await renderAsync(blob, el, undefined, {
+          className: "docx-preview-wrapper",
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          ignoreLastRenderedPageBreak: true,
+          experimental: false,
+          trimXmlDeclaration: true,
+          useBase64URL: true,
+        });
+      } catch (e: unknown) {
+        if (!cancelled) setDocxErr(e instanceof Error ? e.message : "文档渲染失败");
+      } finally {
+        if (!cancelled) setDocxBusy(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      el.innerHTML = "";
+    };
+  }, [blob]);
+
+  return (
+    <div className="relative flex min-h-[240px] flex-1 flex-col">
+      {docxBusy ? (
+        <div className="bg-background/70 absolute inset-0 z-10 flex items-center justify-center">
+          <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+        </div>
+      ) : null}
+      {docxErr ? <p className="text-destructive py-4 text-sm">{docxErr}</p> : null}
+      <div
+        ref={ref}
+        className="min-h-[200px] flex-1 overflow-auto rounded-xl border border-black/[0.08] bg-white"
+      />
+    </div>
   );
 }
 
@@ -106,15 +183,18 @@ export function WeKnoraKnowledgePreviewPane({
         if (cancelled) return;
         setBlob(b);
         const mime = effectiveMime(name, b.type);
+        if (b.size > PREVIEW_MAX_BYTES) {
+          return;
+        }
+        if (isDocxFile(name, mime) || isLegacyDocFile(name, mime)) {
+          return;
+        }
         const needsObjectUrl =
           mime.startsWith("image/") ||
           mime === "application/pdf" ||
           mime.startsWith("audio/") ||
           mime.startsWith("video/") ||
           mime === "text/html";
-        if (b.size > PREVIEW_MAX_BYTES) {
-          return;
-        }
         if (needsObjectUrl) {
           const url = URL.createObjectURL(b);
           setObjectUrl(url);
@@ -216,6 +296,24 @@ export function WeKnoraKnowledgePreviewPane({
         </button>
       </div>
     );
+  } else if (blob && isLegacyDocFile(name, mime)) {
+    body = (
+      <div className="space-y-3 py-4 text-sm">
+        <p className="text-muted-foreground">
+          旧版 Word（.doc）无法在浏览器内预览，请下载后用 Word 或 WPS 打开。
+        </p>
+        <button
+          type="button"
+          onClick={onDownload}
+          className="inline-flex items-center gap-2 rounded-xl border border-black/[0.08] bg-muted/40 px-4 py-2 text-sm font-medium hover:bg-muted"
+        >
+          <Download className="h-4 w-4" />
+          下载到本地查看
+        </button>
+      </div>
+    );
+  } else if (blob && isDocxFile(name, mime)) {
+    body = <DocxPreview blob={blob} />;
   } else if (mime.startsWith("image/") && objectUrl) {
     body = (
       <div className="flex min-h-0 flex-1 justify-center overflow-auto">

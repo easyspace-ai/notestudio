@@ -158,10 +158,10 @@ func (s *studioService) ProcessGenerateTask(ctx context.Context, payload *types.
 	}
 
 	switch strings.ToLower(payload.Kind) {
-	case types.StudioKindHTML:
+	case types.StudioKindHTML, types.StudioKindSlides:
 		err = s.runHTMLJob(ctx, job, payload)
 	default:
-		err = fmt.Errorf("studio kind %q is not implemented yet (only %s is supported)", payload.Kind, types.StudioKindHTML)
+		err = fmt.Errorf("studio kind %q is not implemented yet (only %s and %s are supported)", payload.Kind, types.StudioKindHTML, types.StudioKindSlides)
 	}
 
 	if err != nil {

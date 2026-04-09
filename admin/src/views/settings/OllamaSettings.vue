@@ -182,7 +182,8 @@ import { checkOllamaStatus, listOllamaModels, downloadOllamaModel, getDownloadPr
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 
-const localBaseUrl = ref(settingsStore.settings.ollamaConfig?.baseUrl ?? '')
+// 不用 localStorage 里的 ollamaConfig 做初值：Docker 时代会存 host.docker.internal，易与本地 .env 混淆
+const localBaseUrl = ref('http://localhost:11434')
 
 const testing = ref(false)
 const connectionStatus = ref<boolean | null>(null)
@@ -327,15 +328,11 @@ const downloadModel = async () => {
 const initOllamaBaseUrl = async () => {
   try {
     const result = await checkOllamaStatus()
-    // 如果接口返回了 baseUrl，优先使用接口返回的值
+    // 始终以当前连接的后端返回为准，并写回 store（避免曾用 Docker Admin 时 localStorage 长期残留错误地址）
     if (result.baseUrl) {
       localBaseUrl.value = result.baseUrl
-      // 如果 store 中没有保存过，也保存到 store 中
-      if (!settingsStore.settings.ollamaConfig?.baseUrl) {
-        settingsStore.updateOllamaConfig({ baseUrl: result.baseUrl })
-      }
-    } else if (!localBaseUrl.value) {
-      // 如果接口没返回且 store 中也没有，使用默认值
+      settingsStore.updateOllamaConfig({ baseUrl: result.baseUrl })
+    } else {
       localBaseUrl.value = 'http://localhost:11434'
     }
     
@@ -348,10 +345,8 @@ const initOllamaBaseUrl = async () => {
     return result
   } catch (error) {
     console.error('初始化 Ollama 地址失败:', error)
-    // 如果获取失败，使用默认值或 store 中的值
-    if (!localBaseUrl.value) {
-      localBaseUrl.value = 'http://localhost:11434'
-    }
+    localBaseUrl.value = 'http://localhost:11434'
+    connectionStatus.value = false
     return null
   }
 }

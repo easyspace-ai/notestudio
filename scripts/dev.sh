@@ -291,6 +291,23 @@ start_app() {
     case "${REDIS_ADDR:-}" in
         ""|redis:6379) export REDIS_ADDR=localhost:6379 ;;
     esac
+    # 本地 go 进程访问本机 Ollama：.env 若沿用 Docker 默认的 host.docker.internal，在本机无效
+    case "${OLLAMA_BASE_URL:-}" in
+        http://host.docker.internal:*|https://host.docker.internal:*)
+            export OLLAMA_BASE_URL=http://localhost:11434
+            log_info "OLLAMA_BASE_URL 已改为 http://localhost:11434（本地运行后端时请连本机 Ollama，勿使用 host.docker.internal）"
+            ;;
+    esac
+    # 去掉首尾空白与 Windows 换行，避免 .env 里看不见字符导致读到的不是合法 URL
+    if [[ -n "${OLLAMA_BASE_URL:-}" ]]; then
+        OLLAMA_BASE_URL="$(printf '%s' "$OLLAMA_BASE_URL" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        export OLLAMA_BASE_URL
+    fi
+    if [[ -n "${OLLAMA_BASE_URL:-}" ]]; then
+        log_info "OLLAMA_BASE_URL（本进程将使用）: $OLLAMA_BASE_URL"
+    else
+        log_info "OLLAMA_BASE_URL 未设置，后端将使用默认 http://localhost:11434"
+    fi
     [[ -n "${MILVUS_ADDRESS:-}" ]] || export MILVUS_ADDRESS=localhost:19530
     [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]] || export OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317
     [[ -n "${NEO4J_URI:-}" ]] || export NEO4J_URI=bolt://localhost:7687

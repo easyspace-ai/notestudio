@@ -15,6 +15,16 @@ interface MenuItem {
 
 const createMenuChildren = () => reactive<MenuChild[]>([])
 
+const getSessionTime = (item: MenuChild) => {
+  const raw = item.updated_at || item.created_at || ''
+  const time = raw ? new Date(raw).getTime() : 0
+  return Number.isNaN(time) ? 0 : time
+}
+
+const sortChatChildren = (children: MenuChild[]) => {
+  children.sort((a, b) => getSessionTime(b) - getSessionTime(a))
+}
+
 export const useMenuStore = defineStore('menuStore', () => {
   const menuArr = reactive<MenuItem[]>([
     { title: '', titleKey: 'menu.knowledgeBase', icon: 'zhishiku', path: 'knowledge-bases' },
@@ -74,6 +84,7 @@ export const useMenuStore = defineStore('menuStore', () => {
     const exists = chatMenu.children.some((item: MenuChild) => item.id === obj.id)
     if (!exists) {
       chatMenu.children.push(obj)
+      sortChatChildren(chatMenu.children)
     }
   }
 
@@ -83,6 +94,7 @@ export const useMenuStore = defineStore('menuStore', () => {
       chatMenu.children = createMenuChildren()
     }
     chatMenu.children.unshift(item)
+    sortChatChildren(chatMenu.children)
   }
 
   const updatasessionTitle = (sessionId: string, title: string) => {
@@ -93,6 +105,18 @@ export const useMenuStore = defineStore('menuStore', () => {
         item.isNoTitle = false
       }
     })
+  }
+
+  const bumpSessionToTop = (sessionId: string, timestamp: string = new Date().toISOString()) => {
+    const chatMenu = menuArr[chatMenuIndex]
+    chatMenu.children?.forEach((item: MenuChild) => {
+      if (item.id === sessionId) {
+        item.updated_at = timestamp
+      }
+    })
+    if (chatMenu.children) {
+      sortChatChildren(chatMenu.children)
+    }
   }
 
   const changeIsFirstSession = (payload: boolean) => {
@@ -128,6 +152,7 @@ export const useMenuStore = defineStore('menuStore', () => {
     updatemenuArr,
     updataMenuChildren,
     updatasessionTitle,
+    bumpSessionToTop,
     changeIsFirstSession,
     changeFirstQuery,
     setPrefillQuery,

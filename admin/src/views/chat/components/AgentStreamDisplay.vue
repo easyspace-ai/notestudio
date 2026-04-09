@@ -1298,20 +1298,15 @@ onBeforeUnmount(() => {
   }
 });
 
-const ATTRIBUTE_REGEX = /([\w-]+)\s*=\s*"([^"]*)"/g;
-
+// Match double- or single-quoted attribute values (models vary)
 const parseTagAttributes = (attrString: string): Record<string, string> => {
   const attributes: Record<string, string> = {};
   if (!attrString) return attributes;
-
-  ATTRIBUTE_REGEX.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = ATTRIBUTE_REGEX.exec(attrString)) !== null) {
-    const key = match[1];
-    const value = match[2];
-    attributes[key] = value;
+  const re = /([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(attrString)) !== null) {
+    attributes[m[1]] = (m[2] ?? m[3] ?? '').trim();
   }
-
   return attributes;
 };
 
@@ -1323,10 +1318,10 @@ const preprocessMarkdown = (contentStr: string): string => {
   // This avoids showing a half-baked provider:// URL while keeping layout stable.
   contentStr = replaceIncompleteImageWithPlaceholder(contentStr);
 
-  // Preprocess custom citation tags
+  // Preprocess custom citation tags (allow optional space before /> — LLMs often emit `<kb ... />`)
   return contentStr
     .replace(
-      /<web\b([^>]*)\/>/g,
+      /<web\b([^>]*?)\s*\/>/gi,
       (_m: string, attrString: string) => {
         const attrs = parseTagAttributes(attrString);
         const url = attrs.url || '';
@@ -1355,7 +1350,7 @@ const preprocessMarkdown = (contentStr: string): string => {
       }
     )
     .replace(
-      /<kb\b([^>]*)\/>/g,
+      /<kb\b([^>]*?)\s*\/>/gi,
       (_m, attrString: string) => {
         const attrs = parseTagAttributes(attrString);
         const doc = attrs.doc || '';
@@ -1391,7 +1386,7 @@ const getTokens = (content: any) => {
   // Extract <kb.../> and <web.../> tags before sanitization to prevent
   // sanitizeForDisplay from stripping chunk_id labels and UUIDs inside them.
   const tagPlaceholders: string[] = [];
-  const preserved = contentStr.replace(/<(?:kb|web)\b[^>]*\/>/g, (match) => {
+  const preserved = contentStr.replace(/<(?:kb|web)\b[^>]*?\s*\/>/gi, (match) => {
     const idx = tagPlaceholders.length;
     tagPlaceholders.push(match);
     return `\x00TAG${idx}\x00`;

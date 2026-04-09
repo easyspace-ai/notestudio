@@ -36,6 +36,8 @@ function exportFileMeta(payload: Record<string, unknown>, key: string) {
   return { fileName };
 }
 
+const studioHtmlIframeSandbox = "allow-scripts allow-forms";
+
 /** sidebar：与 NotebookShell 右栏同宽内联；expanded：居中放大层 */
 export type StudioMaterialContentLayout = "default" | "sidebar" | "expanded" | "embedded";
 
@@ -305,7 +307,7 @@ function StudioExportPreview(props: {
           title="Studio export preview"
           className={iframeClass}
           srcDoc={srcDoc}
-          sandbox="allow-scripts allow-same-origin"
+          sandbox={studioHtmlIframeSandbox}
         />
       ) : null}
       {markdownFallback ? (
@@ -319,7 +321,7 @@ function StudioExportPreview(props: {
                 title="Source HTML preview"
                 className="h-[min(36vh,360px)] w-full rounded-lg border border-black/[0.08]"
                 srcDoc={markdownFallback}
-                sandbox="allow-scripts allow-same-origin"
+                sandbox={studioHtmlIframeSandbox}
               />
             ) : (
               <Streamdown
@@ -688,10 +690,24 @@ function MaterialBody(props: {
       const src = str(payload, "iframeUrl") ?? str(payload, "url");
       const srcDocInline = str(payload, "srcDoc");
       if (src) {
-        return <iframe title="HTML preview" className={iframeHtml} src={src} />;
+        return (
+          <iframe
+            title="HTML preview"
+            className={iframeHtml}
+            src={src}
+            sandbox={studioHtmlIframeSandbox}
+          />
+        );
       }
       if (srcDocInline) {
-        return <iframe title="HTML preview" className={iframeHtml} srcDoc={srcDocInline} />;
+        return (
+          <iframe
+            title="HTML preview"
+            className={iframeHtml}
+            srcDoc={srcDocInline}
+            sandbox={studioHtmlIframeSandbox}
+          />
+        );
       }
       if (md) {
         if (studioPayloadLooksLikeHtml(md)) {
@@ -700,7 +716,7 @@ function MaterialBody(props: {
               title="HTML preview"
               className={iframeHtml}
               srcDoc={md}
-              sandbox="allow-scripts allow-same-origin"
+              sandbox={studioHtmlIframeSandbox}
             />
           );
         }
@@ -739,7 +755,7 @@ function MaterialBody(props: {
               title="Mind map HTML"
               className={iframeHtml}
               srcDoc={md}
-              sandbox="allow-scripts allow-same-origin"
+              sandbox={studioHtmlIframeSandbox}
             />
           );
         }
@@ -760,7 +776,7 @@ function MaterialBody(props: {
               title="Studio material HTML"
               className={iframeHtml}
               srcDoc={md}
-              sandbox="allow-scripts allow-same-origin"
+              sandbox={studioHtmlIframeSandbox}
             />
           );
         }

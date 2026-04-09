@@ -157,7 +157,7 @@ get_ollama_base_url() {
     check_env_file
 
     # 从环境变量获取Ollama基础URL
-    OLLAMA_URL=${OLLAMA_BASE_URL:-"http://host.docker.internal:11434"}
+    OLLAMA_URL=${OLLAMA_BASE_URL:-"http://localhost:11434"}
     # 提取主机部分
     OLLAMA_HOST=$(echo "$OLLAMA_URL" | sed -E 's|^https?://||' | sed -E 's|:[0-9]+$||' | sed -E 's|/.*$||')
     # 提取端口部分

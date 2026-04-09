@@ -151,10 +151,13 @@ export function WeKnoraProjectPage() {
       messages: { role: string; content: string }[];
     }) => {
       const title = await sessionsApi.generateSessionTitle(sid, messages);
+      // Save the generated title to the session
+      await sessionsApi.updateSession(sid, { title });
       return { sessionId: sid, title };
     },
     onSuccess: ({ sessionId: sid, title }) => {
       // Update the session title in the list
+      toast.success("会话标题已生成");
       void qc.invalidateQueries({ queryKey: ["weknora-sessions", uuid] });
     },
     onError: (e: Error) => {
@@ -165,9 +168,11 @@ export function WeKnoraProjectPage() {
 
   const handleFirstMessageComplete = useCallback(
     (sid: string, messages: { role: string; content: string }[]) => {
-      // Only generate title if session still has default name
       const session = sortedSessions.find((s) => s.id === sid);
-      if (session && (!session.title || session.title === "新对话" || session.title.trim() === "")) {
+      const defaultTitle =
+        !session?.title?.trim() || session.title === "新对话";
+      // 新会话可能尚未出现在列表缓存中，仍应尝试生成标题
+      if (defaultTitle) {
         generateTitle.mutate({ sessionId: sid, messages });
       }
     },
@@ -184,6 +189,28 @@ export function WeKnoraProjectPage() {
           ...(sessionId ? { session_id: sessionId } : {}),
         });
         toast.success("Studio 任务已创建，生成完成后可在此查看");
+        void qc.invalidateQueries({ queryKey: ["weknora-studio-jobs", uuid] });
+      } catch (e) {
+        if (e instanceof ApiError) {
+          toast.error(e.message || "创建失败");
+        } else {
+          toast.error(e instanceof Error ? e.message : "请求失败");
+        }
+      }
+    },
+    [uuid, sessionId, qc],
+  );
+
+  const onQuickSkill = useCallback(
+    async (kind: string, title: string) => {
+      try {
+        await studioApi.createStudioJob({
+          kind,
+          title,
+          project_uuid: uuid,
+          ...(sessionId ? { session_id: sessionId } : {}),
+        });
+        toast.success(`${title}生成任务已创建，完成后将显示在右侧边栏`);
         void qc.invalidateQueries({ queryKey: ["weknora-studio-jobs", uuid] });
       } catch (e) {
         if (e instanceof ApiError) {
@@ -247,6 +274,7 @@ export function WeKnoraProjectPage() {
       knowledgeDocCount={knowledgeRows.length}
       knowledgeTitles={knowledgeTitles}
       onFirstMessageComplete={handleFirstMessageComplete}
+      onQuickSkill={onQuickSkill}
     />
   );
 

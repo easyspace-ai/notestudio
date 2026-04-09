@@ -4,7 +4,7 @@ import type { ComponentProps } from "react";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 
-import { streamdownPlugins } from "./plugins";
+import { assistantStreamdownPlugins } from "./plugins";
 
 export type WeKnoraAssistantMarkdownProps = Omit<
   ComponentProps<typeof MessageResponse>,
@@ -36,8 +36,8 @@ export const WeKnoraAssistantMarkdown = memo(function WeKnoraAssistantMarkdown({
         "[&_th]:bg-muted/40 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_td]:px-3 [&_td]:py-2",
         className,
       )}
-      remarkPlugins={streamdownPlugins.remarkPlugins}
-      rehypePlugins={streamdownPlugins.rehypePlugins}
+      remarkPlugins={assistantStreamdownPlugins.remarkPlugins}
+      rehypePlugins={assistantStreamdownPlugins.rehypePlugins}
       parseIncompleteMarkdown={streaming}
       controls={{ code: true, table: true, mermaid: true }}
       shikiTheme={["github-light", "github-dark"]}

@@ -1,18 +1,21 @@
 <template>
     <div class="main" ref="dropzone">
         <AdminMenu v-if="isPlatformConsole()" />
+        <PlatformManageTenantBar v-if="isPlatformConsole()" />
         <Menu v-else />
         <RouterView />
         <div v-if="!isPlatformConsole()" class="upload-mask" v-show="ismask">
             <input type="file" style="display: none" ref="uploadInput" accept=".pdf,.docx,.doc,.pptx,.ppt,.txt,.md,.jpg,.jpeg,.png,.csv,.xls,.xlsx" />
             <UploadMask></UploadMask>
         </div>
-        <Settings v-if="!isPlatformConsole()" />
+        <!-- 平台管理端也需要全局设置（模型管理、Ollama、存储等）；仅租户端显示上传遮罩 -->
+        <Settings />
     </div>
 </template>
 <script setup lang="ts">
 import Menu from '@/components/menu.vue'
 import AdminMenu from '@/components/AdminMenu.vue'
+import PlatformManageTenantBar from '@/components/PlatformManageTenantBar.vue'
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router'
 import useKnowledgeBase from '@/hooks/useKnowledgeBase'

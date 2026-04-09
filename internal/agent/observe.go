@@ -111,42 +111,77 @@ func (e *AgentEngine) analyzeResponse(
 	}
 
 	// Case 2: final_answer tool call present
+	//
+	// Only short-circuit when final_answer is the SOLE tool in this response.
+	// If the model also emitted other tools (e.g. list_knowledge_chunks + final_answer in one
+	// completion), we must fall through to executeToolCalls; otherwise those tools never run and
+	// no EventAgentToolResult is emitted — the UI stays "executing" forever.
 	if len(response.ToolCalls) > 0 {
-		for _, tc := range response.ToolCalls {
-			if tc.Function.Name == agenttools.ToolFinalAnswer {
-				var faArgs struct {
-					Answer string `json:"answer"`
-				}
-				if err := json.Unmarshal([]byte(tc.Function.Arguments), &faArgs); err != nil {
-					logger.Warnf(ctx, "[Agent][Round-%d] Failed to parse final_answer args: %v",
-						iteration+1, err)
-				} else {
-					logger.Infof(ctx, "[Agent][Round-%d] final_answer tool: answer=%d chars, duration=%dms",
-						iteration+1, len(faArgs.Answer), time.Since(roundStart).Milliseconds())
-
-					e.eventBus.Emit(ctx, event.Event{
-						ID:        generateEventID("answer-done"),
-						Type:      event.EventAgentFinalAnswer,
-						SessionID: sessionID,
-						Data: event.AgentFinalAnswerData{
-							Content: "",
-							Done:    true,
-						},
-					})
-					common.PipelineInfo(ctx, "Agent", "final_answer_tool", map[string]interface{}{
-						"iteration":  iteration,
-						"round":      iteration + 1,
-						"answer_len": len(faArgs.Answer),
-					})
-
-					return responseVerdict{
-						isDone:      true,
-						finalAnswer: faArgs.Answer,
-						step:        step,
-					}
-				}
-				break
+		finalIdx := -1
+		nonFinalCount := 0
+		for i := range response.ToolCalls {
+			name := response.ToolCalls[i].Function.Name
+			if name == "" {
+				continue
 			}
+			if name == agenttools.ToolFinalAnswer {
+				finalIdx = i
+			} else {
+				nonFinalCount++
+			}
+		}
+		if finalIdx >= 0 && nonFinalCount == 0 {
+			tc := response.ToolCalls[finalIdx]
+			var faArgs struct {
+				Answer string `json:"answer"`
+			}
+			if err := json.Unmarshal([]byte(tc.Function.Arguments), &faArgs); err != nil {
+				logger.Warnf(ctx, "[Agent][Round-%d] Failed to parse final_answer args: %v",
+					iteration+1, err)
+			} else {
+				logger.Infof(ctx, "[Agent][Round-%d] final_answer tool: answer=%d chars, duration=%dms",
+					iteration+1, len(faArgs.Answer), time.Since(roundStart).Milliseconds())
+
+				e.eventBus.Emit(ctx, event.Event{
+					ID:        generateEventID("answer-done"),
+					Type:      event.EventAgentFinalAnswer,
+					SessionID: sessionID,
+					Data: event.AgentFinalAnswerData{
+						Content: "",
+						Done:    true,
+					},
+				})
+				common.PipelineInfo(ctx, "Agent", "final_answer_tool", map[string]interface{}{
+					"iteration":  iteration,
+					"round":      iteration + 1,
+					"answer_len": len(faArgs.Answer),
+				})
+
+				// Fast path skips executeToolCalls, so emit a synthetic tool_result so the frontend
+				// can clear any tool_call row shown during streaming (IDs must match NormalizeToolCallID).
+				normID := agenttools.NormalizeToolCallID(tc.ID, tc.Function.Name, finalIdx)
+				e.eventBus.Emit(ctx, event.Event{
+					ID:        normID + "-tool-result-fastpath",
+					Type:      event.EventAgentToolResult,
+					SessionID: sessionID,
+					Data: event.AgentToolResultData{
+						ToolCallID: normID,
+						ToolName:   agenttools.ToolFinalAnswer,
+						Output:     "answer_submitted",
+						Success:    true,
+						Iteration:  iteration,
+					},
+				})
+
+				return responseVerdict{
+					isDone:      true,
+					finalAnswer: faArgs.Answer,
+					step:        step,
+				}
+			}
+		} else if finalIdx >= 0 && nonFinalCount > 0 {
+			logger.Infof(ctx, "[Agent][Round-%d] final_answer bundled with %d other tool(s); executing tools instead of short-circuit",
+				iteration+1, nonFinalCount)
 		}
 	}
 

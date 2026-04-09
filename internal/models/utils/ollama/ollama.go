@@ -28,12 +28,12 @@ type OllamaService struct {
 // GetOllamaService gets Ollama service instance (singleton pattern)
 func GetOllamaService() (*OllamaService, error) {
 	// Get Ollama base URL from environment variable, if not set use provided baseURL or default value
-	logger.GetLogger(context.Background()).Infof("Ollama base URL: %s", os.Getenv("OLLAMA_BASE_URL"))
 	baseURL := "http://localhost:11434"
-	envURL := os.Getenv("OLLAMA_BASE_URL")
+	envURL := strings.TrimSpace(strings.TrimSuffix(os.Getenv("OLLAMA_BASE_URL"), "\r"))
 	if envURL != "" {
 		baseURL = envURL
 	}
+	logger.GetLogger(context.Background()).Infof("Ollama base URL (effective): %s", baseURL)
 
 	// Create URL object
 	parsedURL, err := url.Parse(baseURL)
@@ -68,6 +68,14 @@ func GetOllamaService() (*OllamaService, error) {
 	}
 
 	return service, nil
+}
+
+// BaseURL returns the configured Ollama API base URL (same URL the client uses).
+func (s *OllamaService) BaseURL() string {
+	if s == nil {
+		return ""
+	}
+	return s.baseURL
 }
 
 // StartService checks if Ollama service is available
