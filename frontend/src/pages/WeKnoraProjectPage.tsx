@@ -10,7 +10,7 @@ import * as projectsApi from "@/api/weknora/projects";
 import * as sessionsApi from "@/api/weknora/sessions";
 import * as studioApi from "@/api/weknora/studio";
 import { ApiError } from "@/api/http";
-import type { WeKnoraKnowledge } from "@/api/weknora/types";
+import type { WeKnoraKnowledge, WeKnoraSession } from "@/api/weknora/types";
 import { NotebookShell, type NotebookWorkbenchTab } from "@/components/layout/NotebookShell";
 import { WeKnoraKnowledgePreviewPane } from "@/components/project/WeKnoraKnowledgePreview";
 import { WeKnoraKnowledgeSidebar } from "@/components/project/WeKnoraKnowledgeSidebar";
@@ -21,6 +21,16 @@ import { WeKnoraChatDock } from "@/components/project/WeKnoraChatDock";
 import { StudioPanel } from "@/components/workspace/StudioPanel";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Match backend `GetPagedByTenantID`: `ORDER BY updated_at DESC` (then stable id). */
+function sortSessionsNewestFirst(rows: WeKnoraSession[]): WeKnoraSession[] {
+  return [...rows].sort((a, b) => {
+    const tb = new Date(b.updated_at || b.created_at).getTime();
+    const ta = new Date(a.updated_at || a.created_at).getTime();
+    if (tb !== ta) return tb - ta;
+    return b.id.localeCompare(a.id);
+  });
+}
 
 export function WeKnoraProjectPage() {
   const params = useParams<{ projectUuid?: string; projectId?: string }>();
@@ -126,6 +136,23 @@ export function WeKnoraProjectPage() {
     },
     onSuccess: (s) => {
       setSessionId(s.id);
+      qc.setQueryData(["weknora-sessions", uuid], (prev) => {
+        if (!prev || typeof prev !== "object") return prev;
+        const p = prev as {
+          data: WeKnoraSession[];
+          total: number;
+          page: number;
+          page_size: number;
+        };
+        const rest = (p.data ?? []).filter((x) => x.id !== s.id);
+        const isNew = rest.length === (p.data ?? []).length;
+        const total = typeof p.total === "number" ? p.total : (p.data ?? []).length;
+        return {
+          ...p,
+          data: [s, ...rest],
+          total: isNew ? total + 1 : total,
+        };
+      });
       void qc.invalidateQueries({ queryKey: ["weknora-sessions", uuid] });
     },
     onError: (e: Error) => toast.error(e.message || "创建会话失败"),
@@ -135,10 +162,9 @@ export function WeKnoraProjectPage() {
     setSessionId(id);
   }, []);
 
-  // Sort sessions by created_at descending (newest first)
   const sortedSessions = useMemo(() => {
     const rows = sessions.data?.data ?? [];
-    return [...rows].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return sortSessionsNewestFirst(rows);
   }, [sessions.data?.data]);
 
   // Generate session title after first message exchange
@@ -237,10 +263,23 @@ export function WeKnoraProjectPage() {
   useEffect(() => {
     const rows = sessions.data?.data;
     if (!rows?.length) return;
-    if (!sessionId || !rows.some((r) => r.id === sessionId)) {
-      setSessionId(rows[0]!.id);
+
+    if (sessionId && rows.some((r) => r.id === sessionId)) {
+      return;
     }
-  }, [sessions.data, sessionId]);
+
+    if (!sessionId) {
+      setSessionId(sortSessionsNewestFirst(rows)[0]!.id);
+      return;
+    }
+
+    // 当前 id 不在列表里：可能是刚创建会话而列表缓存仍是 refetch 前的旧数据
+    if (sessions.isFetching) {
+      return;
+    }
+
+    setSessionId(sortSessionsNewestFirst(rows)[0]!.id);
+  }, [sessions.data, sessions.isFetching, sessionId]);
 
   useEffect(() => {
     if (!UUID_RE.test(uuid)) return;

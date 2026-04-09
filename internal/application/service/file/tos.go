@@ -210,7 +210,7 @@ func (s *tosFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 		PutObjectBasicInput: tos.PutObjectBasicInput{
 			Bucket:      targetBucket,
 			Key:         objectName,
-			ContentType: "text/csv; charset=utf-8",
+			ContentType: getContentTypeByExt(ext),
 		},
 		Content: reader,
 	})

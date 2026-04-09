@@ -2,9 +2,8 @@
   <div class="platform-manage-page">
     <div class="page-head">
       <h1>Agent 管理</h1>
-      <p class="hint">按租户维护智能体；请先选择目标租户。</p>
+      <p class="hint">按租户维护智能体；请在顶部「管理租户」中选择目标租户。</p>
     </div>
-    <PlatformManageTenantBar />
     <div class="page-body-scroll">
       <AgentList />
     </div>
@@ -12,7 +11,6 @@
 </template>
 
 <script setup lang="ts">
-import PlatformManageTenantBar from '@/components/PlatformManageTenantBar.vue'
 import AgentList from '@/views/agent/AgentList.vue'
 </script>
 

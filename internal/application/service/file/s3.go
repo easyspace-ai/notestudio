@@ -197,7 +197,7 @@ func getContentTypeByExt(ext string) string {
 		return "text/plain; charset=utf-8"
 	case ".md":
 		return "text/markdown"
-	case ".html":
+	case ".html", ".htm":
 		return "text/html; charset=utf-8"
 	case ".jpg", ".jpeg":
 		return "image/jpeg"
@@ -313,7 +313,7 @@ func (s *s3FileService) SaveBytes(ctx context.Context, data []byte, tenantID uin
 		Key:           aws.String(objectName),
 		Body:          reader,
 		ContentLength: aws.Int64(int64(len(data))),
-		ContentType:   aws.String("text/csv; charset=utf-8"),
+		ContentType:   aws.String(getContentTypeByExt(ext)),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to upload bytes to S3: %w", err)

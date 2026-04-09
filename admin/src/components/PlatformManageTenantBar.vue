@@ -6,11 +6,11 @@
       class="tenant-select"
       :options="options"
       :loading="loading"
-      placeholder="选择租户（Agent / MCP / Skills）"
+      placeholder="选择租户（设置、Agent、模型、知识库、网络搜索等）"
       filterable
       @change="onChange"
     />
-    <span class="hint">以下页面的数据与操作均针对所选租户；请求头会携带 X-Tenant-ID。</span>
+    <span class="hint">平台端接口需带 X-Tenant-ID；请在此选择要代管的租户（未选时部分保存操作会失败）。</span>
   </div>
 </template>
 

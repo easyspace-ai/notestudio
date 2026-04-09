@@ -782,6 +782,8 @@ func serveFiles(r *gin.Engine, cfg *config.Config) {
 			contentType = "application/pdf"
 		case ".csv":
 			contentType = "text/csv; charset=utf-8"
+		case ".html", ".htm":
+			contentType = "text/html; charset=utf-8"
 		}
 
 		c.Header("Content-Type", contentType)
