@@ -353,6 +353,13 @@ func (c *RemoteAPIChat) parseCompletionResponse(resp *openai.ChatCompletionRespo
 	// 处理思考模型的输出：移除 <think></think> 标签包裹的思考过程
 	// 为设置了 Thinking=false 但模型仍返回思考内容的情况和部分不支持Thinking=false的思考模型(例如Miniax-M2.1)提供兜底策略
 	content := removeThinkingContent(choice.Message.Content)
+	// Non-stream: if content is empty but reasoning_content holds a full HTML document (mis-split), use it.
+	if strings.TrimSpace(content) == "" && strings.TrimSpace(choice.Message.ReasoningContent) != "" {
+		fallback := removeThinkingContent(choice.Message.ReasoningContent)
+		if messageLooksLikeHTMLDocument(fallback) {
+			content = fallback
+		}
+	}
 
 	response := &types.ChatResponse{
 		Content:      content,
@@ -381,6 +388,16 @@ func (c *RemoteAPIChat) parseCompletionResponse(resp *openai.ChatCompletionRespo
 	return response, nil
 }
 
+// messageLooksLikeHTMLDocument reports whether s looks like a full HTML page (not plain reasoning text).
+func messageLooksLikeHTMLDocument(s string) bool {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return false
+	}
+	lower := strings.ToLower(t)
+	return strings.HasPrefix(t, "<!DOCTYPE") || strings.HasPrefix(lower, "<html")
+}
+
 // removeThinkingContent 移除思考模型输出中的 <think></think> 思考过程
 // 仅当内容以 <think> 开头时才处理
 func removeThinkingContent(content string) string {
@@ -397,10 +414,16 @@ func removeThinkingContent(content string) string {
 		if result := strings.TrimSpace(trimmed[lastEndIdx+len(thinkEndTag):]); result != "" {
 			return result
 		}
+		// Some models place the full HTML inside the thinking block with nothing after the closing tag.
+		inner := strings.TrimSpace(trimmed[len(thinkStartTag):lastEndIdx])
+		if messageLooksLikeHTMLDocument(inner) {
+			return inner
+		}
 		return ""
 	}
 
-	return "" // 未找到 </think>，可能思考内容过长被截断，返回空字符串
+	// No closing tag: do not drop the entire message (avoids empty non-stream completions / empty Studio HTML).
+	return content
 }
 
 // ChatStream 进行流式聊天

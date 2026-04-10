@@ -1,130 +1,96 @@
-# Fallback templates
-# Contains both fixed-response templates and model-fallback prompt templates.
-# Fixed responses: used directly as the reply when fallback_strategy = "fixed"
-# Model prompts: used as the prompt to the LLM when fallback_strategy = "model"
+# 兜底模板
+# 包含固定回复模板和模型兜底提示模板
 templates:
-  # --- Fixed response templates ---
   - id: "default_fallback"
-    name: "Standard Fallback"
-    description: "Standard fallback response template"
+    name: "标准兜底"
+    description: "无法命中资料时的默认回复"
     i18n:
       zh-CN:
         name: "标准兜底"
-        description: "友好告知无法回答并提供建议"
+        description: "无法命中资料时的默认回复"
       en-US:
         name: "Standard Fallback"
-        description: "Friendly message with suggestions when unable to answer"
+        description: "Default fallback response"
       ko-KR:
         name: "표준 폴백"
-        description: "친절하게 답변 및 제안을 드릴 수 없음을 알려드립니다."
+        description: "기본 폴백 응답"
     default: true
     content: |
-      Sorry, I could not find content directly related to your question in the knowledge base.
+      抱歉，我暂时没有在当前资料中找到能直接回答你问题的内容。
 
-      You can try:
-      1. Rephrasing your question in a different way
-      2. Providing more specific information
-      3. Consulting a professional in the relevant field
+      你可以尝试：
+      1. 换一种说法重新提问
+      2. 提供更具体的关键词、文件名或背景信息
+      3. 把问题拆成更小、更明确的几个点
 
-      If you have other questions, I'm happy to continue helping you.
+      如果你愿意，我也可以继续帮你一起梳理问题。
 
-      ## CRITICAL: Language Rule
-      - ALWAYS respond in {{language}}
+      请使用 {{language}} 输出。
 
   - id: "polite_fallback"
-    name: "Polite Fallback"
-    description: "More polite and friendly fallback response"
+    name: "礼貌兜底"
+    description: "更柔和、更详细的兜底回复"
     i18n:
       zh-CN:
         name: "礼貌兜底"
-        description: "更加礼貌详细的无法回答提示"
+        description: "更柔和、更详细的兜底回复"
       en-US:
         name: "Polite Fallback"
-        description: "More polite and detailed unable-to-answer message"
+        description: "More polite fallback response"
       ko-KR:
         name: "정중한 폴백"
-        description: "더 정중하고 자세한 답변 불가 프롬프트"
+        description: "조금 더 자세하고 정중한 폴백 응답"
     content: |
-      I'm sorry, I'm currently unable to provide an accurate answer to your question. This may be because:
-      - The question is beyond my knowledge scope
-      - The knowledge base does not yet contain relevant content
+      抱歉，我目前还无法基于现有资料给出足够准确的回答。
 
-      Suggestions:
-      1. Try rephrasing with different keywords
-      2. Break down your question into more specific sub-questions
-      3. Contact customer support for assistance
+      可能的原因包括：
+      - 相关内容尚未收录到资料中
+      - 当前问题描述还不够具体
+      - 现有资料与问题关联较弱
 
-      Thank you for your understanding, and I look forward to helping you with other questions!
+      建议你：
+      1. 更换关键词重新提问
+      2. 说明具体对象、时间范围或场景
+      3. 提供更明确的文件或主题线索
 
-      ## CRITICAL: Language Rule
-      - ALWAYS respond in {{language}}
+      请使用 {{language}} 输出。
 
   - id: "brief_fallback"
-    name: "Brief Fallback"
-    description: "Short fallback response"
+    name: "简洁兜底"
+    description: "更短的兜底回复"
     i18n:
       zh-CN:
         name: "简洁兜底"
-        description: "简短的无法回答提示"
+        description: "更短的兜底回复"
       en-US:
         name: "Brief Fallback"
-        description: "Short unable-to-answer message"
+        description: "Short fallback response"
       ko-KR:
         name: "간단한 폴백"
-        description: "대답할 수 없는 짧은 프롬프트"
-    content: "Sorry, I'm unable to answer this question at the moment. Please try rephrasing your question, or contact customer support."
+        description: "짧은 폴백 응답"
+    content: |
+      抱歉，当前资料还不足以回答这个问题。你可以换个说法，或补充更多背景信息后再试一次。
 
-  # --- Model fallback prompt templates (for fallback_strategy = "model") ---
   - id: "model_fallback"
-    name: "Model Fallback"
-    description: "Fallback prompt that delegates to the model for generation"
+    name: "模型兜底提示"
+    description: "当选择模型兜底策略时使用的提示词"
     i18n:
       zh-CN:
         name: "模型兜底提示"
-        description: "引导模型基于通用知识回答的提示词"
+        description: "当选择模型兜底策略时使用的提示词"
       en-US:
         name: "Model Fallback Prompt"
-        description: "Prompt to guide model to answer with general knowledge"
+        description: "Prompt for model fallback mode"
       ko-KR:
         name: "모델 폴백 프롬프트"
-        description: "일반 지식을 바탕으로 모델이 답변하도록 안내하는 프롬프트"
+        description: "모델 폴백 모드에서 사용하는 프롬프트"
     mode: "model"
     content: |
-      No content directly related to the user's question was found in the knowledge base. Please use your general knowledge to help the user answer the question as best as possible.
+      你是 MetaNote 的智能助手。当前知识库没有命中能够直接回答用户问题的内容。
 
-      Important Notes:
-      1. Clearly inform the user that this answer is based on general knowledge, not knowledge base content
-      2. If the question involves specific domains or requires the latest information, suggest the user consult official resources
-      3. Maintain accuracy and objectivity in the response
-
-      ## CRITICAL: Language Rule
-      - ALWAYS respond in {{language}}
-
-      User question: {{query}}
-
-  - id: "default_fallback_prompt"
-    name: "Standard Fallback Prompt"
-    description: "Default prompt that delegates to the model when KB has no relevant results"
-    i18n:
-      zh-CN:
-        name: "标准兜底 Prompt"
-        description: "知识库无相关结果时引导模型回答的默认提示词"
-      en-US:
-        name: "Standard Fallback Prompt"
-        description: "Default prompt that delegates to the model when KB has no relevant results"
-      ko-KR:
-        name: "표준 폴백 프롬프트"
-        description: "KB에 관련 결과가 없을 때 모델에 위임하는 기본 프롬프트"
-    mode: "model"
-    content: |
-      You are WeKnora, a professional and friendly AI assistant . Please answer the user's question based on your knowledge.
-
-      ## Response Requirements
-      - Answer the user's question directly
-      - Be concise, clear, and substantive
-      - If real-time data or personal privacy information is involved, honestly state that it cannot be obtained
-      - Use a polite and professional tone
-      - IMPORTANT: Always respond in {{language}}
-
-      ## User's question:
-      {{query}}
+      请基于你的通用知识尽力提供一个有帮助、清楚、克制的回答，并遵守以下要求：
+      - 明确区分“确定信息”和“可能信息”
+      - 不要假装自己已经查到资料
+      - 如果内容具有时效性或不确定性，要主动提醒用户
+      - 如果更适合继续检索，也可以建议用户补充线索后再查
+      - 全部使用 {{language}} 输出

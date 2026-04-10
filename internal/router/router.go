@@ -106,10 +106,8 @@ func NewRouter(params RouterParams) *gin.Engine {
 		))
 	}
 
-	// 前端静态文件（仅 Lite 版本内嵌前端）
-	if handler.Edition == "lite" {
-		serveFrontendStatic(r)
-	}
+	// 主站 React（/）与运营后台 Vue（/admin）：Lite 默认开启；标准版可设 WEKNORA_SERVE_WEB=1 或存在 bin/frontend/index.html
+	serveEmbeddedWebUIIfConfigured(r)
 
 	// IM 回调路由（在认证中间件之前注册，使用各平台自身的签名验证）
 	RegisterIMRoutes(r, params.IMHandler)
@@ -413,6 +411,8 @@ func RegisterPlatformAdminRoutes(r *gin.RouterGroup, h *handler.PlatformAdminHan
 	r.GET("/admin/skills/:name", h.GetAdminSkill)
 	r.PUT("/admin/skills/:name", h.UpdateAdminSkill)
 	r.PATCH("/admin/skills/:name", h.PatchAdminSkill)
+	r.PUT("/admin/skills/:name/studio-ui", h.PutAdminSkillStudioUI)
+	r.DELETE("/admin/skills/:name/studio-ui", h.DeleteAdminSkillStudioUI)
 }
 
 // RegisterAuthRoutes registers authentication routes
@@ -550,6 +550,8 @@ func RegisterSkillRoutes(r *gin.RouterGroup, skillHandler *handler.SkillHandler)
 	{
 		// List all preloaded skills
 		skills.GET("", skillHandler.ListSkills)
+		// Studio chat quick actions (PPT / 网页等), manifest under skills/pubic/
+		skills.GET("/studio-quick", skillHandler.GetStudioQuickSkills)
 	}
 }
 
@@ -664,24 +666,104 @@ func RegisterIMChannelRoutes(r *gin.RouterGroup, imHandler *handler.IMHandler) {
 	}
 }
 
-// serveFrontendStatic registers a middleware that serves the frontend SPA
-// from the ./web directory if it exists. Must be called BEFORE auth middleware
-// so static files are served without authentication.
-func serveFrontendStatic(r *gin.Engine) {
-	webDir := os.Getenv("WEKNORA_WEB_DIR")
-	if webDir == "" {
-		webDir = "./web"
+// shouldServeEmbeddedWebUI enables filesystem SPAs when Lite, explicit env, or built assets exist.
+func shouldServeEmbeddedWebUI() bool {
+	if handler.Edition == "lite" {
+		return true
 	}
-	absDir, _ := filepath.Abs(webDir)
-	indexPath := filepath.Join(absDir, "index.html")
-	if _, err := os.Stat(indexPath); err != nil {
+	if strings.TrimSpace(os.Getenv("WEKNORA_SERVE_WEB")) == "1" {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join("bin", "frontend", "index.html")); err == nil {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join("web", "index.html")); err == nil {
+		return true
+	}
+	return false
+}
+
+func resolveFrontendWebRoot() string {
+	if v := strings.TrimSpace(os.Getenv("WEKNORA_WEB_DIR")); v != "" {
+		return v
+	}
+	if _, err := os.Stat(filepath.Join("bin", "frontend", "index.html")); err == nil {
+		return filepath.Join("bin", "frontend")
+	}
+	return "web"
+}
+
+func resolveAdminWebRoot() string {
+	if v := strings.TrimSpace(os.Getenv("WEKNORA_ADMIN_WEB_DIR")); v != "" {
+		return v
+	}
+	return filepath.Join("bin", "admin")
+}
+
+// joinUnderStaticRoot maps a URL suffix (no leading slash) to a file under absRoot; blocks ".." segments.
+func joinUnderStaticRoot(absRoot, urlSubpath string) (full string, ok bool) {
+	absRoot = filepath.Clean(absRoot)
+	sub := strings.TrimPrefix(strings.TrimSpace(urlSubpath), "/")
+	if sub == "" {
+		return filepath.Join(absRoot, "index.html"), true
+	}
+	parts := strings.Split(sub, "/")
+	joined := make([]string, 0, len(parts)+1)
+	joined = append(joined, absRoot)
+	for _, p := range parts {
+		if p == "" || p == "." {
+			continue
+		}
+		if p == ".." {
+			return "", false
+		}
+		joined = append(joined, p)
+	}
+	candidate := filepath.Join(joined...)
+	candidate = filepath.Clean(candidate)
+	rel, err := filepath.Rel(absRoot, candidate)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return candidate, true
+}
+
+// serveEmbeddedWebUIIfConfigured serves the React SPA at / (WEKNORA_WEB_DIR or bin/frontend or web)
+// and the Vue admin SPA at /admin when bin/admin/index.html exists (WEKNORA_ADMIN_WEB_DIR).
+// Must run BEFORE auth middleware. Skips /api, /health, /swagger, /files.
+func serveEmbeddedWebUIIfConfigured(r *gin.Engine) {
+	if !shouldServeEmbeddedWebUI() {
+		return
+	}
+	frontRoot := resolveFrontendWebRoot()
+	frontAbs, err := filepath.Abs(frontRoot)
+	if err != nil {
+		logger.Warnf(context.Background(), "[Router] embedded web: bad frontend path %q: %v", frontRoot, err)
+		return
+	}
+	frontIndex := filepath.Join(frontAbs, "index.html")
+	if _, err := os.Stat(frontIndex); err != nil {
+		logger.Warnf(context.Background(), "[Router] embedded web: no %s, skip static UI", frontIndex)
 		return
 	}
 
-	logger.Infof(context.Background(), "[Router] Serving frontend static files from %s", absDir)
+	adminRoot := resolveAdminWebRoot()
+	adminAbs, aerr := filepath.Abs(adminRoot)
+	adminIndex := ""
+	if aerr == nil {
+		ai := filepath.Join(adminAbs, "index.html")
+		if _, err := os.Stat(ai); err == nil {
+			adminIndex = ai
+		}
+	}
 
-	fs := http.Dir(absDir)
-	fileServer := http.FileServer(fs)
+	logger.Infof(context.Background(), "[Router] Serving main frontend from %s (/)", frontAbs)
+	if adminIndex != "" {
+		logger.Infof(context.Background(), "[Router] Serving admin UI from %s (/admin)", adminAbs)
+	}
+
+	frontFS := http.Dir(frontAbs)
+	frontServer := http.FileServer(frontFS)
 
 	r.Use(func(c *gin.Context) {
 		if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
@@ -689,17 +771,49 @@ func serveFrontendStatic(r *gin.Engine) {
 			return
 		}
 		path := c.Request.URL.Path
-		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/health") || strings.HasPrefix(path, "/swagger/") {
+		if strings.HasPrefix(path, "/api/") ||
+			strings.HasPrefix(path, "/health") ||
+			strings.HasPrefix(path, "/swagger/") ||
+			path == "/files" || strings.HasPrefix(path, "/files/") {
 			c.Next()
 			return
 		}
-		fullPath := filepath.Join(absDir, path)
-		if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
-			fileServer.ServeHTTP(c.Writer, c.Request)
+
+		if path == "/admin" || strings.HasPrefix(path, "/admin/") {
+			if adminIndex == "" {
+				c.Next()
+				return
+			}
+			sub := strings.TrimPrefix(path, "/admin")
+			full, ok := joinUnderStaticRoot(adminAbs, sub)
+			if !ok {
+				c.File(adminIndex)
+				c.Abort()
+				return
+			}
+			if fi, err := os.Stat(full); err == nil && !fi.IsDir() {
+				http.ServeFile(c.Writer, c.Request, full)
+				c.Abort()
+				return
+			}
+			c.File(adminIndex)
 			c.Abort()
 			return
 		}
-		c.File(indexPath)
+
+		sub := strings.TrimPrefix(path, "/")
+		full, ok := joinUnderStaticRoot(frontAbs, sub)
+		if !ok {
+			c.File(frontIndex)
+			c.Abort()
+			return
+		}
+		if fi, err := os.Stat(full); err == nil && !fi.IsDir() {
+			frontServer.ServeHTTP(c.Writer, c.Request)
+			c.Abort()
+			return
+		}
+		c.File(frontIndex)
 		c.Abort()
 	})
 }

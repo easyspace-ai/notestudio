@@ -58,4 +58,6 @@ builtin_agents:
       vector_threshold: 0.5
       rerank_top_k: 10
       rerank_threshold: 0.3
+      # 未设置时服务端曾将 Studio 魔棒/侧栏视为「无 Skills」而空白；与「全部 Skills」对齐。
+      skills_selection_mode: "all"
 

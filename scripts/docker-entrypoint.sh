@@ -40,4 +40,6 @@ if [ -d "$BUILTIN_DIR" ]; then
 fi
 
 # ─── Drop privileges and exec the main process ───
+# Milvus + Qdrant 同时链入时 protobuf 全局注册 common.proto 会冲突；未带 -ldflags 的旧二进制也可用此环境变量
+export GOLANG_PROTOBUF_REGISTRATION_CONFLICT="${GOLANG_PROTOBUF_REGISTRATION_CONFLICT:-warn}"
 exec gosu appuser "$@"

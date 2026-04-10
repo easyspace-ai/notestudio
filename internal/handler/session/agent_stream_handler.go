@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/output"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
 // AgentStreamHandler handles agent events for SSE streaming
@@ -21,7 +21,7 @@ type AgentStreamHandler struct {
 	assistantMessageID string
 	requestID          string
 	assistantMessage   *types.Message
-	streamManager      interfaces.StreamManager
+	outputAdapter      output.OutputAdapter
 
 	eventBus *event.EventBus
 
@@ -37,7 +37,7 @@ func NewAgentStreamHandler(
 	ctx context.Context,
 	sessionID, assistantMessageID, requestID string,
 	assistantMessage *types.Message,
-	streamManager interfaces.StreamManager,
+	outputAdapter output.OutputAdapter,
 	eventBus *event.EventBus,
 ) *AgentStreamHandler {
 	return &AgentStreamHandler{
@@ -46,7 +46,7 @@ func NewAgentStreamHandler(
 		assistantMessageID: assistantMessageID,
 		requestID:          requestID,
 		assistantMessage:   assistantMessage,
-		streamManager:      streamManager,
+		outputAdapter:      outputAdapter,
 		eventBus:           eventBus,
 		knowledgeRefs:      make([]*types.SearchResult, 0),
 		eventStartTimes:    make(map[string]time.Time),
@@ -102,7 +102,7 @@ func (h *AgentStreamHandler) handleThought(ctx context.Context, evt event.Event)
 	h.mu.Unlock()
 
 	// Append this chunk to stream (no accumulation - frontend will accumulate)
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+	if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 		ID:        evt.ID,
 		Type:      types.ResponseTypeThinking,
 		Content:   data.Content, // Just this chunk
@@ -135,7 +135,7 @@ func (h *AgentStreamHandler) handleToolCall(ctx context.Context, evt event.Event
 	}
 
 	// Append event to stream
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+	if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 		ID:        evt.ID,
 		Type:      types.ResponseTypeToolCall,
 		Content:   fmt.Sprintf("Calling tool: %s", data.ToolName),
@@ -196,7 +196,7 @@ func (h *AgentStreamHandler) handleToolResult(ctx context.Context, evt event.Eve
 	}
 
 	// Append event to stream
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+	if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 		ID:        evt.ID,
 		Type:      responseType,
 		Content:   content,
@@ -220,48 +220,14 @@ func (h *AgentStreamHandler) handleReferences(ctx context.Context, evt event.Eve
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// Extract knowledge references
-	// Try to cast directly to []*types.SearchResult first
-	if searchResults, ok := data.References.([]*types.SearchResult); ok {
-		h.knowledgeRefs = append(h.knowledgeRefs, searchResults...)
-	} else if refs, ok := data.References.([]interface{}); ok {
-		// Fallback: convert from []interface{}
-		for _, ref := range refs {
-			if sr, ok := ref.(*types.SearchResult); ok {
-				h.knowledgeRefs = append(h.knowledgeRefs, sr)
-			} else if refMap, ok := ref.(map[string]interface{}); ok {
-				// Parse from map if needed
-				searchResult := &types.SearchResult{
-					ID:                   getString(refMap, "id"),
-					Content:              getString(refMap, "content"),
-					Score:                getFloat64(refMap, "score"),
-					KnowledgeID:          getString(refMap, "knowledge_id"),
-					KnowledgeTitle:       getString(refMap, "knowledge_title"),
-					ChunkIndex:           int(getFloat64(refMap, "chunk_index")),
-					KnowledgeDescription: getString(refMap, "knowledge_description"),
-					KnowledgeBaseID:      getString(refMap, "knowledge_base_id"),
-				}
-
-				if meta, ok := refMap["metadata"].(map[string]interface{}); ok {
-					metadata := make(map[string]string)
-					for k, v := range meta {
-						if strVal, ok := v.(string); ok {
-							metadata[k] = strVal
-						}
-					}
-					searchResult.Metadata = metadata
-				}
-
-				h.knowledgeRefs = append(h.knowledgeRefs, searchResult)
-			}
-		}
-	}
+	// Extract knowledge references (strongly typed)
+	h.knowledgeRefs = append(h.knowledgeRefs, data.References...)
 
 	// Update assistant message references
 	h.assistantMessage.KnowledgeReferences = h.knowledgeRefs
 
 	// Append references event to stream
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+	if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 		ID:        evt.ID,
 		Type:      types.ResponseTypeReferences,
 		Content:   "",
@@ -318,7 +284,7 @@ func (h *AgentStreamHandler) handleFinalAnswer(ctx context.Context, evt event.Ev
 	h.mu.Unlock()
 
 	// Append this chunk to stream (frontend will accumulate by event ID)
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+	if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 		ID:        evt.ID,
 		Type:      types.ResponseTypeAnswer,
 		Content:   data.Content, // Just this chunk
@@ -340,7 +306,7 @@ func (h *AgentStreamHandler) handleReflection(ctx context.Context, evt event.Eve
 	}
 
 	// Append this chunk to stream (frontend will accumulate by event ID)
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+	if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 		ID:        evt.ID,
 		Type:      types.ResponseTypeReflection,
 		Content:   data.Content, // Just this chunk
@@ -367,7 +333,7 @@ func (h *AgentStreamHandler) handleError(ctx context.Context, evt event.Event) e
 	}
 
 	// Append error event to stream
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+	if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 		ID:        evt.ID,
 		Type:      types.ResponseTypeError,
 		Content:   data.Error,
@@ -392,7 +358,7 @@ func (h *AgentStreamHandler) handleSessionTitle(ctx context.Context, evt event.E
 	bgCtx := context.Background()
 
 	// Append title event to stream
-	if err := h.streamManager.AppendEvent(bgCtx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+	if err := h.outputAdapter.WriteEvent(bgCtx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 		ID:        evt.ID,
 		Type:      types.ResponseTypeSessionTitle,
 		Content:   data.Title,
@@ -427,22 +393,14 @@ func (h *AgentStreamHandler) handleComplete(ctx context.Context, evt event.Event
 
 		// Update knowledge references if provided
 		if len(data.KnowledgeRefs) > 0 {
-			knowledgeRefs := make([]*types.SearchResult, 0, len(data.KnowledgeRefs))
-			for _, ref := range data.KnowledgeRefs {
-				if sr, ok := ref.(*types.SearchResult); ok {
-					knowledgeRefs = append(knowledgeRefs, sr)
-				}
-			}
-			h.assistantMessage.KnowledgeReferences = knowledgeRefs
+			h.assistantMessage.KnowledgeReferences = data.KnowledgeRefs
 		}
 
 		h.assistantMessage.Content += data.FinalAnswer
 
 		// Update agent steps if provided
-		if data.AgentSteps != nil {
-			if steps, ok := data.AgentSteps.([]types.AgentStep); ok {
-				h.assistantMessage.AgentSteps = steps
-			}
+		if len(data.AgentSteps) > 0 {
+			h.assistantMessage.AgentSteps = data.AgentSteps
 		}
 	}
 
@@ -458,7 +416,7 @@ func (h *AgentStreamHandler) handleComplete(ctx context.Context, evt event.Event
 			len(data.FinalAnswer), data.TotalSteps, data.TotalDurationMs,
 		)
 		fallbackID := fmt.Sprintf("answer-fallback-%d", time.Now().UnixMilli())
-		if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+		if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 			ID:        fallbackID,
 			Type:      types.ResponseTypeAnswer,
 			Content:   data.FinalAnswer,
@@ -471,7 +429,7 @@ func (h *AgentStreamHandler) handleComplete(ctx context.Context, evt event.Event
 		}); err != nil {
 			logger.GetLogger(h.ctx).Errorf("Append fallback answer event failed: %v", err)
 		}
-		if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+		if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 			ID:        fallbackID,
 			Type:      types.ResponseTypeAnswer,
 			Content:   "",
@@ -487,7 +445,7 @@ func (h *AgentStreamHandler) handleComplete(ctx context.Context, evt event.Event
 	}
 
 	// Send completion event to stream manager so SSE can detect completion
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+	if err := h.outputAdapter.WriteEvent(h.ctx, h.sessionID, h.assistantMessageID, output.OutputEvent{
 		ID:        evt.ID,
 		Type:      types.ResponseTypeComplete,
 		Content:   "",

@@ -25,6 +25,12 @@ function resolveVueOfficePptxEntry(): string {
 }
 
 export default defineConfig({
+  /** 与 Go 静态挂载路径一致：根服务 / ，管理端挂 /admin */
+  base: '/admin/',
+  build: {
+    outDir: '../bin/admin',
+    emptyOutDir: true,
+  },
   plugins: [
     vue(),
     vueJsx(),

@@ -22,10 +22,17 @@ type SkillService interface {
 	GetSkillDetailForAdmin(ctx context.Context, name string) (*types.SkillAdminDetail, error)
 	UpdateSkillFile(ctx context.Context, name, content string) error
 	SetSkillEnabled(ctx context.Context, name string, enabled bool) error
+	// PutSkillStudioUI saves Studio/魔棒 UI overrides (data/skill_studio_overrides.json) and refreshes quick manifest.
+	PutSkillStudioUI(ctx context.Context, name string, entry types.SkillStudioUIEntry) error
+	RefreshStudioQuickSkills(ctx context.Context) error
 
 	// ResolveAgentSkillAllowlist returns relative skill parent dirs and optional allowlist when some skills are disabled.
 	ResolveAgentSkillAllowlist(ctx context.Context) (skillDirs []string, allowed []string, disableAll bool, err error)
 
 	// FilterToEnabledSkillNames drops disabled skill names from a list (e.g. custom agent selection).
 	FilterToEnabledSkillNames(ctx context.Context, names []string) ([]string, error)
+
+	// GetStudioQuickSkillsManifest returns the Studio quick-action manifest (scan skills/pubic SKILL.md
+	// with weknora_studio, write studio-quick-skills.json at init).
+	GetStudioQuickSkillsManifest(ctx context.Context) (*types.StudioQuickSkillsManifest, error)
 }

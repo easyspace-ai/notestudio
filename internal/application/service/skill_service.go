@@ -30,10 +30,11 @@ func DefaultSkillParentDirs() []string {
 
 // skillService implements SkillService interface
 type skillService struct {
-	loader       *skills.Loader
-	preloadedDir string
-	mu           sync.Mutex
-	initialized  bool
+	loader              *skills.Loader
+	preloadedDir        string
+	studioQuickManifest *types.StudioQuickSkillsManifest
+	mu                  sync.Mutex
+	initialized         bool
 }
 
 // NewSkillService creates a new skill service
@@ -147,10 +148,99 @@ func (s *skillService) ensureInitialized(ctx context.Context) error {
 	}
 
 	s.loader = skills.NewLoader(dirs)
+	s.loadStudioQuickSkillsLocked(ctx)
 	s.initialized = true
 
 	logger.Infof(ctx, "Skill service initialized with skill dirs: %v", dirs)
 	return nil
+}
+
+func (s *skillService) loadStudioQuickSkillsLocked(ctx context.Context) {
+	pub, err := s.publicRootAbs()
+	if err != nil || pub == "" {
+		logger.Warnf(ctx, "studio quick skills: public skills root unavailable: %v", err)
+		s.studioQuickManifest = emptyStudioQuickManifest()
+		return
+	}
+	if _, err := os.Stat(pub); err != nil {
+		if os.IsNotExist(err) {
+			logger.Warnf(ctx, "studio quick skills: public skills dir missing: %s", pub)
+		} else {
+			logger.Warnf(ctx, "studio quick skills: stat %s: %v", pub, err)
+		}
+		s.studioQuickManifest = emptyStudioQuickManifest()
+		return
+	}
+	s.refreshStudioQuickUnderLock(ctx)
+}
+
+// refreshStudioQuickUnderLock rescans skills/pubic, merges skill_studio_overrides, writes JSON, updates in-memory manifest.
+// Caller must hold s.mu.
+func (s *skillService) refreshStudioQuickUnderLock(ctx context.Context) {
+	pub, err := s.publicRootAbs()
+	if err != nil || pub == "" {
+		s.studioQuickManifest = emptyStudioQuickManifest()
+		return
+	}
+	m, err := scanAndPersistStudioQuickSkills(ctx, pub)
+	if err != nil {
+		logger.Errorf(ctx, "studio quick skills: scan/write failed: %v", err)
+		s.studioQuickManifest = emptyStudioQuickManifest()
+		return
+	}
+	s.studioQuickManifest = m
+}
+
+func emptyStudioQuickManifest() *types.StudioQuickSkillsManifest {
+	return &types.StudioQuickSkillsManifest{Version: 1, Items: []types.StudioQuickSkillItem{}}
+}
+
+// GetStudioQuickSkillsManifest returns the manifest produced at init by scanning skills/pubic (see weknora_studio in SKILL.md).
+func (s *skillService) GetStudioQuickSkillsManifest(ctx context.Context) (*types.StudioQuickSkillsManifest, error) {
+	if err := s.ensureInitialized(ctx); err != nil {
+		return nil, fmt.Errorf("failed to initialize skill service: %w", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.studioQuickManifest == nil {
+		return emptyStudioQuickManifest(), nil
+	}
+	return s.studioQuickManifest, nil
+}
+
+// RefreshStudioQuickSkills rescans pubic skills and studio UI overrides (after admin edits SKILL or overrides JSON).
+func (s *skillService) RefreshStudioQuickSkills(ctx context.Context) error {
+	if err := s.ensureInitialized(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refreshStudioQuickUnderLock(ctx)
+	return nil
+}
+
+// PutSkillStudioUI persists platform-admin Studio/魔棒展示配置 and refreshes the quick manifest.
+func (s *skillService) PutSkillStudioUI(ctx context.Context, name string, entry types.SkillStudioUIEntry) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("skill name required")
+	}
+	byName, err := readSkillStudioOverrides()
+	if err != nil {
+		return err
+	}
+	if skillStudioUIEntryIsClear(entry) {
+		delete(byName, name)
+	} else {
+		byName[name] = entry
+	}
+	if err := writeSkillStudioOverrides(byName); err != nil {
+		return err
+	}
+	return s.RefreshStudioQuickSkills(ctx)
+}
+
+func skillStudioUIEntryIsClear(e types.SkillStudioUIEntry) bool {
+	return e.DisplayLabel == "" && e.DefaultTitle == "" && e.Icon == "" && e.StudioKind == "" && e.ShowInStudioUI == nil
 }
 
 func (s *skillService) isSkillDisabled(name string) bool {
@@ -254,15 +344,25 @@ func (s *skillService) ListSkillsForAdmin(ctx context.Context) ([]types.SkillAdm
 		return nil, err
 	}
 
+	ov, err := readSkillStudioOverrides()
+	if err != nil {
+		return nil, err
+	}
+
 	rows := make([]types.SkillAdminRow, 0, len(metadata))
 	for _, m := range metadata {
 		_, off := disabled[m.Name]
-		rows = append(rows, types.SkillAdminRow{
+		row := types.SkillAdminRow{
 			Name:        m.Name,
 			Description: m.Description,
 			Source:      s.skillSource(m),
 			Enabled:     !off,
-		})
+		}
+		if e, ok := ov[m.Name]; ok {
+			cp := e
+			row.StudioUI = &cp
+		}
+		rows = append(rows, row)
 	}
 	return rows, nil
 }
@@ -301,15 +401,23 @@ func (s *skillService) GetSkillDetailForAdmin(ctx context.Context, name string) 
 		}
 	}
 
+	row := types.SkillAdminRow{
+		Name:        meta.Name,
+		Description: meta.Description,
+		Source:      s.skillSource(meta),
+		Enabled:     !off,
+	}
+	if ov, err := readSkillStudioOverrides(); err == nil {
+		if e, ok := ov[name]; ok {
+			cp := e
+			row.StudioUI = &cp
+		}
+	}
+
 	return &types.SkillAdminDetail{
-		SkillAdminRow: types.SkillAdminRow{
-			Name:        meta.Name,
-			Description: meta.Description,
-			Source:      s.skillSource(meta),
-			Enabled:     !off,
-		},
-		Content: string(content),
-		RelPath: rel,
+		SkillAdminRow: row,
+		Content:       string(content),
+		RelPath:       rel,
 	}, nil
 }
 
@@ -346,6 +454,7 @@ func (s *skillService) UpdateSkillFile(ctx context.Context, name string, content
 	if _, err := s.loader.Reload(); err != nil {
 		logger.Warnf(ctx, "skill reload after write failed: %v", err)
 	}
+	s.refreshStudioQuickUnderLock(ctx)
 	return nil
 }
 

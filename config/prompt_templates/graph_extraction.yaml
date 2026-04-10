@@ -1,232 +1,88 @@
-# Graph extraction prompt templates
-# Used for knowledge graph entity and relationship extraction
+# 知识图谱抽取模板
 templates:
   - id: "default_extract_entities"
-    name: "Entity Extraction"
-    description: "Extract entities from text for knowledge graph construction"
+    name: "实体抽取"
+    description: "从文本中抽取知识图谱实体"
     default: true
     content: |
-      ## Task
-      Extract all entities from the user-provided text that match the following entity types:
-      EntityTypes: [Person, Organization, Location, Product, Event, Date, Work, Concept, Resource, Category, Operation]
+      ## 任务
+      从用户提供的文本中抽取实体，用于构建知识图谱。
 
-      ## Requirements
-      1. Output must be in JSON array format
-      2. Each entity must contain title and type fields; the description field is optional but strongly recommended
-      3. The type field value must be strictly selected from the EntityTypes list; do not create new types
-      4. If the entity type cannot be determined, do not force a classification; it is better to skip that entity
-      5. Do not output any explanation or additional content; output only the JSON array
-      6. All field values must not contain HTML tags or other code
-      7. If an entity is ambiguous, specify the reference in the description
-      8. If no entities are found, return an empty array []
+      实体类型只能从下面列表中选择：
+      [Person, Organization, Location, Product, Event, Date, Work, Concept, Resource, Category, Operation]
 
-      ## Entity Extraction Rules
-      - Person: Real or fictional characters, including historical figures, modern figures, literary characters, etc.
-      - Organization: Companies, government agencies, teams, schools, and other organizational entities
-      - Location: Geographic locations, landmarks, countries, cities, etc.
-      - Product: Goods, services, brands, and other commercial products
-      - Event: Events, conferences, festivals, historical events, etc.
-      - Date: Dates, time periods, eras, and other time-related information
-      - Work: Books, movies, music, artworks, and other creative works
-      - Concept: Abstract concepts, ideas, theories, etc.
-      - Resource: Natural resources, information resources, tools, etc.
-      - Category: Classifications, categories, fields, etc.
-      - Operation: Operations, actions, methods, processes, etc.
+      ## 输出要求
+      1. 只输出 JSON 数组
+      2. 每个实体对象至少包含 `title` 和 `type`
+      3. `description` 可选，但强烈建议提供
+      4. `type` 必须严格来自给定类型列表，不能自造
+      5. 无法明确判断类型时，宁可跳过，不要强行归类
+      6. 所有字段都不能包含 HTML 或代码片段
+      7. 如果没有找到实体，返回 `[]`
 
-      ## Extraction Steps
-      1. Carefully read the text and identify potential entities
-      2. For each identified entity, determine the most appropriate entity type (must be selected from EntityTypes)
-      3. Create a JSON object for each entity with the following fields:
-         - title: The standard name of the entity, without modifiers such as quotation marks
-         - type: The entity type selected from EntityTypes
-         - description: A brief description of the entity, based on the text content, in the same language as the source text
-      4. Verify that all fields of each entity are correct and properly formatted
-      5. Merge all entity objects into a single JSON array
-      6. Check that the final JSON is valid and meets requirements
+      ## 抽取规则
+      - Person：人物，包括真实人物、虚构人物、历史人物
+      - Organization：组织、公司、机构、学校、团队、家族
+      - Location：地理位置、国家、城市、地点、地标
+      - Product：产品、服务、品牌、系统
+      - Event：事件、会议、活动、历史事件
+      - Date：日期、时间段、时代
+      - Work：书籍、论文、影视、音乐、艺术作品
+      - Concept：抽象概念、理论、观点、方法论
+      - Resource：资源、工具、平台、数据、材料
+      - Category：类别、领域、分类
+      - Operation：动作、流程、方法、操作
 
-      ## CRITICAL: Language Rule
-      - Extract entity titles exactly as they appear in the source text
-      - Write descriptions in {{language}}
+      ## 字段要求
+      - `title`：实体的标准名称，去掉无关修饰
+      - `type`：实体类型
+      - `description`：基于原文写一句简洁描述，使用 {{language}}
 
-      ## Example
-      [Input]
-      Text: "Romeo and Juliet" is a tragedy written by William Shakespeare early in his career about the romance between two Italian youths from feuding families. It was among Shakespeare's most popular plays during his lifetime and is one of his most frequently performed plays. The play is set in Verona, Italy. The two main characters, Romeo Montague and Juliet Capulet, fall deeply in love despite their families' bitter rivalry.
-
-      [Output]
+      ## 输出示例
       [
         {
-          "title": "Romeo and Juliet",
-          "type": "Work",
-          "description": "A tragedy written by William Shakespeare about the romance between two youths from feuding families"
-        },
-        {
-          "title": "William Shakespeare",
-          "type": "Person",
-          "description": "The author of Romeo and Juliet, who wrote the play early in his career"
-        },
-        {
-          "title": "Romeo Montague",
-          "type": "Person",
-          "description": "One of the two main characters in Romeo and Juliet, from the Montague family"
-        },
-        {
-          "title": "Juliet Capulet",
-          "type": "Person",
-          "description": "One of the two main characters in Romeo and Juliet, from the Capulet family"
-        },
-        {
-          "title": "Verona",
-          "type": "Location",
-          "description": "The Italian city where Romeo and Juliet is set"
-        },
-        {
-          "title": "Montague",
-          "type": "Organization",
-          "description": "One of the two feuding families in the play, Romeo's family"
-        },
-        {
-          "title": "Capulet",
-          "type": "Organization",
-          "description": "One of the two feuding families in the play, Juliet's family"
+          "title": "MetaNote",
+          "type": "Product",
+          "description": "一个用于资料问答和内容分析的智能系统"
         }
       ]
 
   - id: "default_extract_relationships"
-    name: "Relationship Extraction"
-    description: "Extract relationships between entities for knowledge graph construction"
+    name: "关系抽取"
+    description: "从文本中抽取实体关系"
     default: true
     content: |
-      ## Task
-      From the user-provided entity array, extract explicit relationships between entities to form a structured relationship network.
+      ## 任务
+      根据文本内容和已抽取的实体数组，提取实体之间在原文中明确出现的关系。
 
-      ## Requirements
-      1. Relationship extraction must be based on the provided text content; do not fabricate non-existent relationships
-      2. Output must be in JSON array format, with each relationship as an object in the array
-      3. Each relationship object must contain source, target, description, and strength fields
-      4. Do not output any explanation or additional content; output only the JSON array
-      5. If no relationships are found, return an empty array []
+      ## 输出要求
+      1. 只输出 JSON 数组
+      2. 每个关系对象必须包含 `source`、`target`、`description`、`strength`
+      3. 关系必须有原文依据，不能编造
+      4. `source` 和 `target` 必须来自已有实体
+      5. 如果没有关系，返回 `[]`
 
-      ## Relationship Extraction Rules
-      - Only relationships explicitly present in the text should be extracted
-      - Source entity and target entity must be entities already in the entity array
-      - Relationship description should concisely explain the specific relationship between the two entities
-      - Relationship strength should be determined based on the following criteria:
-        * 10: Direct creation/subordination relationship (e.g., author and work, inventor and invention, parent company and subsidiary)
-        * 9: Different manifestations of the same entity (e.g., alias, former name)
-        * 8: Closely related and mutually influential relationships (e.g., close partners, family members)
-        * 7: Clear but indirect relationships (e.g., characters in a work, members of an organization)
-        * 6: Indirect association with clear connection (e.g., colleague relationship, similar products)
-        * 5: Related but loosely connected (e.g., different concepts in the same field)
+      ## strength 评分参考
+      - 10：直接创建、从属、作者与作品、母子公司等强关系
+      - 9：同一实体的别名、旧名等高度等价关系
+      - 8：高度相关、强联系关系，例如亲属、核心协作、明确对立
+      - 7：明确但间接的关系，例如角色属于作品、成员属于组织
+      - 6：有清晰联系但不是核心关系
+      - 5：相关但连接较弱
 
-      ## Extraction Steps
-      1. Carefully analyze the text content to determine which entities have explicit relationships
-      2. Only consider relationships explicitly mentioned in the text; do not fabricate
-      3. For each relationship found, determine:
-         - source: The title of the source entity (must be an entity already in the entity list)
-         - target: The title of the target entity (must be an entity already in the entity list)
-         - description: A concise and accurate relationship description
-         - strength: Relationship strength based on the above criteria (integer between 5-10)
-      4. Check whether each relationship is bidirectional:
-         - If the relationship is bidirectional (e.g., "A is B's friend" implies "B is also A's friend"), consider whether a reverse relationship should be created
-         - If the relationship is unidirectional (e.g., "A created B"), keep only the unidirectional relationship
-      5. Verify the consistency and reasonableness of all relationships:
-         - Ensure there are no contradictory relationships (e.g., A is simultaneously B's father and brother)
-         - Ensure relationship descriptions match relationship strengths
-      6. Organize all valid relationships into a JSON array
+      ## 抽取原则
+      - 只保留原文明确表达的关系
+      - `description` 要简洁准确，使用 {{language}}
+      - 如果关系是单向的，只保留单向关系
+      - 如果关系天然双向，可以根据语义决定是否同时输出反向关系
+      - 不要输出互相矛盾的关系
 
-      ## CRITICAL: Language Rule
-      - Write relationship descriptions in {{language}}
-
-      ## Example
-      [Input]
-      Entities: [
-        {
-          "title": "Romeo and Juliet",
-          "type": "Work",
-          "description": "A tragedy written by William Shakespeare about the romance between two youths from feuding families"
-        },
-        {
-          "title": "William Shakespeare",
-          "type": "Person",
-          "description": "The author of Romeo and Juliet, who wrote the play early in his career"
-        },
-        {
-          "title": "Romeo Montague",
-          "type": "Person",
-          "description": "One of the two main characters in Romeo and Juliet, from the Montague family"
-        },
-        {
-          "title": "Juliet Capulet",
-          "type": "Person",
-          "description": "One of the two main characters in Romeo and Juliet, from the Capulet family"
-        },
-        {
-          "title": "Verona",
-          "type": "Location",
-          "description": "The Italian city where Romeo and Juliet is set"
-        },
-        {
-          "title": "Montague",
-          "type": "Organization",
-          "description": "One of the two feuding families in the play, Romeo's family"
-        },
-        {
-          "title": "Capulet",
-          "type": "Organization",
-          "description": "One of the two feuding families in the play, Juliet's family"
-        }
-      ]
-
-      Text: "Romeo and Juliet" is a tragedy written by William Shakespeare early in his career about the romance between two Italian youths from feuding families. It was among Shakespeare's most popular plays during his lifetime and is one of his most frequently performed plays. The play is set in Verona, Italy. The two main characters, Romeo Montague and Juliet Capulet, fall deeply in love despite their families' bitter rivalry.
-
-      [Output]
+      ## 输出示例
       [
         {
-          "source": "William Shakespeare",
-          "target": "Romeo and Juliet",
-          "description": "William Shakespeare is the author of Romeo and Juliet",
-          "strength": 10
-        },
-        {
-          "source": "Romeo Montague",
-          "target": "Juliet Capulet",
-          "description": "Romeo and Juliet fall deeply in love despite their families' rivalry",
-          "strength": 8
-        },
-        {
-          "source": "Romeo Montague",
-          "target": "Montague",
-          "description": "Romeo is a member of the Montague family",
-          "strength": 8
-        },
-        {
-          "source": "Juliet Capulet",
-          "target": "Capulet",
-          "description": "Juliet is a member of the Capulet family",
-          "strength": 8
-        },
-        {
-          "source": "Romeo and Juliet",
-          "target": "Romeo Montague",
-          "description": "Romeo Montague is one of the main characters in the play",
-          "strength": 7
-        },
-        {
-          "source": "Romeo and Juliet",
-          "target": "Juliet Capulet",
-          "description": "Juliet Capulet is one of the main characters in the play",
-          "strength": 7
-        },
-        {
-          "source": "Romeo and Juliet",
-          "target": "Verona",
-          "description": "The play is set in Verona, Italy",
-          "strength": 6
-        },
-        {
-          "source": "Montague",
-          "target": "Capulet",
-          "description": "The Montague and Capulet families have a bitter rivalry",
+          "source": "张三",
+          "target": "MetaNote",
+          "description": "张三是 MetaNote 项目的负责人",
           "strength": 8
         }
       ]

@@ -14,9 +14,11 @@ import {
   Settings2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { StudioMaterial, StudioMaterialKind } from "@/api/chatclaw";
+import type { WeKnoraStudioQuickSkillItem } from "@/api/weknora/types";
+import { studioQuickSkillIcon } from "@/lib/studioQuickIcons";
 import { useArtifactsOptional } from "@/components/workspace/artifacts";
 import {
   DropdownMenu,
@@ -53,6 +55,13 @@ type Props = {
   studioReady?: boolean;
   studioLoading?: boolean;
   studioError?: string | null;
+  /**
+   * When set (e.g. project page with agent), replaces static tiles with the same `/skills/studio-quick`
+   * list as the chat 魔棒 — same labels, kinds, and default titles.
+   */
+  studioQuickItems?: WeKnoraStudioQuickSkillItem[];
+  studioQuickLoading?: boolean;
+  studioQuickFetchError?: boolean;
 };
 
 type TileBadge = "BETA" | "Soon";
@@ -66,6 +75,44 @@ type StudioTile = {
   disabled?: boolean;
   onClick?: () => void;
 };
+
+function buildDefaultStudioTiles(
+  onQuick?: (kind: StudioMaterialKind, title: string) => void,
+): StudioTile[] {
+  return [
+    {
+      key: "audio",
+      label: "音频概述",
+      icon: Mic,
+      cardClass: "bg-[#ECECEC]/90 hover:bg-[#E5E5E5]",
+      badge: "Soon",
+      disabled: true,
+    },
+    {
+      key: "slides",
+      label: "幻灯片",
+      icon: Presentation,
+      cardClass: "bg-[#ECECEC]/90 hover:bg-[#E5E5E5]",
+      badge: "Soon",
+      disabled: true,
+    },
+    {
+      key: "mindmap",
+      label: "思维导图",
+      icon: Network,
+      cardClass: "bg-[#E8E8E8]/90 hover:bg-[#E2E2E2]",
+      badge: "Soon",
+      disabled: true,
+    },
+    {
+      key: "html",
+      label: "网页",
+      icon: FileCode,
+      cardClass: "bg-[#EBEBEB]/90 hover:bg-[#E5E5E5]",
+      onClick: () => onQuick?.("html", "新网页"),
+    },
+  ];
+}
 
 function studioKindLabel(kind: StudioMaterialKind): string {
   const map: Partial<Record<StudioMaterialKind, string>> = {
@@ -129,6 +176,9 @@ export function StudioPanel(props: Props) {
     studioReady = true,
     studioLoading = false,
     studioError = null,
+    studioQuickItems,
+    studioQuickLoading = false,
+    studioQuickFetchError = false,
   } = props;
 
   const materials = materialsProp ?? [];
@@ -137,68 +187,24 @@ export function StudioPanel(props: Props) {
 
   const [scopeOpen, setScopeOpen] = useState(false);
 
-  const tiles: StudioTile[] = [
-    {
-      key: "audio",
-      label: "音频概述",
-      icon: Mic,
-      cardClass: "bg-[#ECECEC]/90 hover:bg-[#E5E5E5]",
-      badge: "Soon",
-      disabled: true,
-    },
-    {
-      key: "slides",
-      label: "幻灯片",
-      icon: Presentation,
-      cardClass: "bg-[#ECECEC]/90 hover:bg-[#E5E5E5]",
-      badge: "Soon",
-      disabled: true,
-    },
-    {
-      key: "mindmap",
-      label: "思维导图",
-      icon: Network,
-      cardClass: "bg-[#E8E8E8]/90 hover:bg-[#E2E2E2]",
-      badge: "Soon",
-      disabled: true,
-    },
-    // {
-    //   key: "report",
-    //   label: "报告",
-    //   icon: FileText,
-    //   cardClass: "bg-[#EBEBEB]/90 hover:bg-[#E5E5E5]",
-    //   onClick: () => onQuickMaterial?.("report", "新报告"),
-    // },
-    // {
-    //   key: "quiz",
-    //   label: "测验",
-    //   icon: BookOpen,
-    //   cardClass: "bg-[#EAEAEA]/90 hover:bg-[#E3E3E3]",
-    //   onClick: () => onQuickMaterial?.("quiz", "新测验"),
-    // },
-    // {
-    //   key: "infographic",
-    //   label: "信息图",
-    //   icon: BarChart3,
-    //   cardClass: "bg-[#ECECEC]/90 hover:bg-[#E5E5E5]",
-    //   badge: "BETA",
-    //   onClick: () => onQuickMaterial?.("infographic", "新信息图"),
-    // },
-    // {
-    //   key: "data_table",
-    //   label: "数据表",
-    //   icon: Database,
-    //   cardClass: "bg-[#E8E8E8]/90 hover:bg-[#E2E2E2]",
-    //   onClick: () => onQuickMaterial?.("data_table", "新数据表"),
-    // },
-    {
-      key: "html",
-      label: "网页",
-      icon: FileCode,
+  const tiles: StudioTile[] = useMemo(() => {
+    if (studioQuickItems === undefined) {
+      return buildDefaultStudioTiles(onQuickMaterial);
+    }
+    if (studioQuickLoading || studioQuickFetchError) {
+      return [];
+    }
+    if (studioQuickItems.length === 0) {
+      return [];
+    }
+    return studioQuickItems.map((it) => ({
+      key: it.id,
+      label: it.label,
+      icon: studioQuickSkillIcon(it.icon),
       cardClass: "bg-[#EBEBEB]/90 hover:bg-[#E5E5E5]",
-      onClick: () => onQuickMaterial?.("html", "新网页"),
-    },
-  ];
+      onClick: () => onQuickMaterial?.(it.studioKind as StudioMaterialKind, it.defaultTitle),
+    }));
+  }, [studioQuickItems, studioQuickLoading, studioQuickFetchError, onQuickMaterial]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -267,6 +273,26 @@ export function StudioPanel(props: Props) {
           )}
         </div>
       )}
+
+      {studioQuickItems !== undefined && studioQuickLoading ? (
+        <div className="text-muted-foreground mb-3 flex shrink-0 items-center gap-2 text-xs">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          加载与魔棒一致的 Studio 技能…
+        </div>
+      ) : null}
+      {studioQuickItems !== undefined && !studioQuickLoading && studioQuickFetchError ? (
+        <div className="mb-3 shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900">
+          无法加载 Studio 技能列表，请稍后重试。
+        </div>
+      ) : null}
+      {studioQuickItems !== undefined &&
+      !studioQuickLoading &&
+      !studioQuickFetchError &&
+      studioQuickItems.length === 0 ? (
+        <p className="text-muted-foreground mb-3 shrink-0 text-[11px] leading-relaxed">
+          当前智能体暂无可用的 Studio 快捷项（与后台为该 Agent 勾选的技能及扫描结果一致）。
+        </p>
+      ) : null}
 
       <div className="grid shrink-0 grid-cols-2 gap-1.5">
         {tiles.map((tile) => {

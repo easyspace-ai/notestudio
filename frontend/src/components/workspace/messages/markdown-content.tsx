@@ -7,14 +7,13 @@ import {
   MessageResponse,
   type MessageResponseProps,
 } from "@/components/ai-elements/message";
-import { assistantStreamdownPlugins } from "@/core/streamdown";
-import { cn } from "@/lib/utils";
+import {
+  assistantStreamdownPlugins,
+  preprocessKbCitationTags,
+  WeKnoraMarkdownAnchor,
+} from "@/core/streamdown";
 
 import { CitationLink } from "../citations/citation-link";
-
-function isExternalUrl(href: string | undefined): boolean {
-  return !!href && /^https?:\/\//.test(href);
-}
 
 export type MarkdownContentProps = {
   content: string;
@@ -33,8 +32,11 @@ export function MarkdownContent({
   remarkPlugins = assistantStreamdownPlugins.remarkPlugins,
   components: componentsFromProps,
 }: MarkdownContentProps) {
+  const processedContent = useMemo(() => preprocessKbCitationTags(content), [content]);
+
   const components = useMemo(() => {
     return {
+      ...componentsFromProps,
       a: (props: AnchorHTMLAttributes<HTMLAnchorElement>) => {
         if (typeof props.children === "string") {
           const match = /^citation:(.+)$/.exec(props.children);
@@ -43,25 +45,12 @@ export function MarkdownContent({
             return <CitationLink {...props}>{text}</CitationLink>;
           }
         }
-        const { className, target, rel, ...rest } = props;
-        const external = isExternalUrl(props.href);
-        return (
-          <a
-            {...rest}
-            className={cn(
-              "text-primary decoration-primary/30 hover:decoration-primary/60 underline underline-offset-2 transition-colors",
-              className,
-            )}
-            target={target ?? (external ? "_blank" : undefined)}
-            rel={rel ?? (external ? "noopener noreferrer" : undefined)}
-          />
-        );
+        return <WeKnoraMarkdownAnchor {...props} />;
       },
-      ...componentsFromProps,
     };
   }, [componentsFromProps]);
 
-  if (!content) return null;
+  if (!processedContent) return null;
 
   return (
     <MessageResponse
@@ -70,7 +59,7 @@ export function MarkdownContent({
       rehypePlugins={rehypePlugins}
       components={components}
     >
-      {content}
+      {processedContent}
     </MessageResponse>
   );
 }

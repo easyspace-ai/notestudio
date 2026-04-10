@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import type { StudioMaterial } from "@/api/chatclaw";
 import * as agentsApi from "@/api/weknora/agents";
@@ -14,13 +14,40 @@ import type { WeKnoraKnowledge, WeKnoraSession } from "@/api/weknora/types";
 import { NotebookShell, type NotebookWorkbenchTab } from "@/components/layout/NotebookShell";
 import { WeKnoraKnowledgePreviewPane } from "@/components/project/WeKnoraKnowledgePreview";
 import { WeKnoraKnowledgeSidebar } from "@/components/project/WeKnoraKnowledgeSidebar";
-import { openStudioArtifact } from "@/lib/studioArtifactOpen";
 import { weknoraStudioJobToMaterial } from "@/lib/weknoraStudioMaterial";
 import { cn } from "@/lib/utils";
 import { WeKnoraChatDock } from "@/components/project/WeKnoraChatDock";
 import { StudioPanel } from "@/components/workspace/StudioPanel";
+import {
+  StudioMaterialExpandedOverlay,
+  StudioMaterialPreviewPane,
+} from "@/components/workspace/StudioMaterialDialog";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const activeSessionStorageKey = (projectUuid: string) => `weknora:active-session:${projectUuid}`;
+
+function readStoredActiveSessionId(projectUuid: string): string | null {
+  try {
+    const v = sessionStorage.getItem(activeSessionStorageKey(projectUuid))?.trim();
+    return v && v.length > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredActiveSessionId(projectUuid: string, sessionId: string | null) {
+  try {
+    const key = activeSessionStorageKey(projectUuid);
+    if (sessionId && sessionId.length > 0) {
+      sessionStorage.setItem(key, sessionId);
+    } else {
+      sessionStorage.removeItem(key);
+    }
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 /** Match backend `GetPagedByTenantID`: `ORDER BY updated_at DESC` (then stable id). */
 function sortSessionsNewestFirst(rows: WeKnoraSession[]): WeKnoraSession[] {
@@ -35,6 +62,9 @@ function sortSessionsNewestFirst(rows: WeKnoraSession[]): WeKnoraSession[] {
 export function WeKnoraProjectPage() {
   const params = useParams<{ projectUuid?: string; projectId?: string }>();
   const uuid = (params.projectUuid ?? params.projectId ?? "").trim();
+  const [searchParams, setSearchParams] = useSearchParams();
+  /** 仅追踪 session 片段，避免其它 query 变化时反复跑选会话逻辑 */
+  const sessionFromUrl = searchParams.get("session")?.trim() ?? "";
   const qc = useQueryClient();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -43,6 +73,9 @@ export function WeKnoraProjectPage() {
   const [previewKnowledge, setPreviewKnowledge] = useState<WeKnoraKnowledge | null>(null);
   const [docSearchQuery, setDocSearchQuery] = useState("");
   const [docSearchOpen, setDocSearchOpen] = useState(false);
+  /** 右栏内联预览 Studio 产物（与 NotebookShell 右栏同宽，可再点「放大」居中浮层） */
+  const [studioSidebarMaterial, setStudioSidebarMaterial] = useState<StudioMaterial | null>(null);
+  const [studioExpandOpen, setStudioExpandOpen] = useState(false);
 
   const project = useQuery({
     queryKey: ["weknora-project", uuid],
@@ -57,12 +90,17 @@ export function WeKnoraProjectPage() {
     queryKey: ["weknora-knowledge", kbId],
     queryFn: () => knowledgeApi.listKnowledge(kbId, { page: 1, page_size: 100 }),
     enabled: UUID_RE.test(uuid) && kbReady,
+    refetchInterval: (q) => {
+      const rows = q.state.data?.data ?? [];
+      const hasInFlight = rows.some((k) => {
+        const s = (k.parse_status ?? "").trim().toLowerCase();
+        return s === "pending" || s === "processing";
+      });
+      return hasInFlight ? 2500 : false;
+    },
   });
 
   const knowledgeRows = knowledgeList.data?.data ?? [];
-  const knowledgeTitles = knowledgeRows
-    .map((k) => (k.file_name || k.title || "").trim())
-    .filter(Boolean);
 
   const uploadKnowledge = useMutation({
     mutationFn: async (file: File) => knowledgeApi.uploadKnowledgeFile(kbId, file),
@@ -87,8 +125,21 @@ export function WeKnoraProjectPage() {
     setWorkbenchTab(tab);
     if (tab === "对话") {
       setPreviewKnowledge(null);
+      setStudioSidebarMaterial(null);
+      setStudioExpandOpen(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!studioSidebarMaterial || studioExpandOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setStudioSidebarMaterial(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [studioSidebarMaterial, studioExpandOpen]);
 
   const agents = useQuery({
     queryKey: ["weknora-agents"],
@@ -117,6 +168,14 @@ export function WeKnoraProjectPage() {
       const rows = q.state.data?.data ?? [];
       return rows.some((j) => j.status === "pending" || j.status === "running") ? 2500 : false;
     },
+  });
+
+  /** Shared with 魔棒 + Studio 侧栏，避免重复请求且列表一致。 */
+  const studioQuickSkills = useQuery({
+    queryKey: ["weknora-studio-quick-skills", agentId],
+    queryFn: () => studioApi.fetchStudioQuickSkills(agentId!),
+    enabled: agentId != null && agentId.length > 0,
+    staleTime: 60_000,
   });
 
   const studioMaterials = useMemo((): StudioMaterial[] => {
@@ -250,14 +309,12 @@ export function WeKnoraProjectPage() {
   );
 
   const onSelectStudioMaterial = useCallback((m: StudioMaterial) => {
-    const payload = m.payload && typeof m.payload === "object" ? (m.payload as Record<string, unknown>) : {};
     if (m.status !== "ready") {
       toast.message("生成未完成", { description: "请待状态为已就绪后再打开。" });
       return;
     }
-    void openStudioArtifact(payload).catch((e: unknown) => {
-      toast.error(e instanceof Error ? e.message : "无法打开文件");
-    });
+    setStudioSidebarMaterial(m);
+    setStudioExpandOpen(false);
   }, []);
 
   useEffect(() => {
@@ -269,6 +326,15 @@ export function WeKnoraProjectPage() {
     }
 
     if (!sessionId) {
+      if (sessionFromUrl && rows.some((r) => r.id === sessionFromUrl)) {
+        setSessionId(sessionFromUrl);
+        return;
+      }
+      const stored = readStoredActiveSessionId(uuid);
+      if (stored && rows.some((r) => r.id === stored)) {
+        setSessionId(stored);
+        return;
+      }
       setSessionId(sortSessionsNewestFirst(rows)[0]!.id);
       return;
     }
@@ -278,8 +344,38 @@ export function WeKnoraProjectPage() {
       return;
     }
 
+    if (sessionFromUrl && rows.some((r) => r.id === sessionFromUrl)) {
+      setSessionId(sessionFromUrl);
+      return;
+    }
+    const stored = readStoredActiveSessionId(uuid);
+    if (stored && rows.some((r) => r.id === stored)) {
+      setSessionId(stored);
+      return;
+    }
     setSessionId(sortSessionsNewestFirst(rows)[0]!.id);
-  }, [sessions.data, sessions.isFetching, sessionId]);
+  }, [sessions.data, sessions.isFetching, sessionId, uuid, sessionFromUrl]);
+
+  useEffect(() => {
+    if (!UUID_RE.test(uuid) || !sessionId) return;
+    writeStoredActiveSessionId(uuid, sessionId);
+  }, [uuid, sessionId]);
+
+  /** 将当前会话同步到 URL，刷新/分享链接仍可打开同一会话（优于仅 sessionStorage）。 */
+  useEffect(() => {
+    if (!UUID_RE.test(uuid) || !sessionId) return;
+    setSearchParams(
+      (prev) => {
+        if (prev.get("session") === sessionId) {
+          return prev;
+        }
+        const next = new URLSearchParams(prev);
+        next.set("session", sessionId);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [uuid, sessionId, setSearchParams]);
 
   useEffect(() => {
     if (!UUID_RE.test(uuid)) return;
@@ -303,6 +399,15 @@ export function WeKnoraProjectPage() {
     );
   }
 
+  const studioQuickFromParent =
+    agentId != null && agentId.length > 0
+      ? {
+          items: studioQuickSkills.data?.items ?? [],
+          isLoading: studioQuickSkills.isPending || studioQuickSkills.isFetching,
+          isError: studioQuickSkills.isError,
+        }
+      : undefined;
+
   const chatColumn = (
     <WeKnoraChatDock
       sessionId={sessionId}
@@ -310,20 +415,37 @@ export function WeKnoraProjectPage() {
       agentId={agentId}
       onAgentChange={setAgentId}
       projectName={project.data?.name}
-      knowledgeDocCount={knowledgeRows.length}
-      knowledgeTitles={knowledgeTitles}
       onFirstMessageComplete={handleFirstMessageComplete}
       onQuickSkill={onQuickSkill}
+      studioQuickSkillsFromParent={studioQuickFromParent}
     />
   );
 
   const studioColumn = (
-    <StudioPanel
-      materials={studioMaterials}
-      materialsLoading={studioJobs.isLoading}
-      onSelectMaterial={onSelectStudioMaterial}
-      onQuickMaterial={onQuickStudio}
-    />
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-2">
+      {studioSidebarMaterial ? (
+        <StudioMaterialPreviewPane
+          variant="sidebar"
+          material={studioSidebarMaterial}
+          projectId={undefined}
+          onClose={() => {
+            setStudioSidebarMaterial(null);
+            setStudioExpandOpen(false);
+          }}
+          onExpand={() => setStudioExpandOpen(true)}
+        />
+      ) : (
+        <StudioPanel
+          materials={studioMaterials}
+          materialsLoading={studioJobs.isLoading}
+          onSelectMaterial={onSelectStudioMaterial}
+          onQuickMaterial={onQuickStudio}
+          studioQuickItems={agentId != null && agentId.length > 0 ? (studioQuickSkills.data?.items ?? []) : undefined}
+          studioQuickLoading={Boolean(agentId && (studioQuickSkills.isPending || studioQuickSkills.isFetching))}
+          studioQuickFetchError={Boolean(agentId && studioQuickSkills.isError)}
+        />
+      )}
+    </div>
   );
 
   const shellCenter =
@@ -407,13 +529,25 @@ export function WeKnoraProjectPage() {
   };
 
   return (
-    <NotebookShell
-      logoHref="/"
-      leftByTab={leftByTab}
-      workbenchTab={workbenchTab}
-      onWorkbenchTabChange={handleWorkbenchTabChange}
-      center={shellCenter}
-      right={shellRight}
-    />
+    <>
+      <NotebookShell
+        logoHref="/"
+        leftByTab={leftByTab}
+        workbenchTab={workbenchTab}
+        onWorkbenchTabChange={handleWorkbenchTabChange}
+        center={shellCenter}
+        right={shellRight}
+      />
+      <StudioMaterialExpandedOverlay
+        projectId={undefined}
+        material={studioSidebarMaterial}
+        open={studioExpandOpen}
+        onMinimize={() => setStudioExpandOpen(false)}
+        onCloseAll={() => {
+          setStudioExpandOpen(false);
+          setStudioSidebarMaterial(null);
+        }}
+      />
+    </>
   );
 }

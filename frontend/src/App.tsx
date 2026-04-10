@@ -18,6 +18,7 @@ import { ChatsIndexPage } from "@/pages/workspace/chats/ChatsIndexPage";
 import { WorkspaceHomePage } from "@/pages/workspace/WorkspaceHomePage";
 import { WorkspaceLayout } from "@/pages/workspace/WorkspaceLayout";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { KbCitationHoverE2ePage } from "@/pages/dev/KbCitationHoverE2ePage";
 
 function DocsPlaceholderPage() {
   return (
@@ -31,6 +32,9 @@ export default function App() {
   return (
     <>
       <Routes>
+        {import.meta.env.DEV ? (
+          <Route path="/__e2e/kb-citation-hover" element={<KbCitationHoverE2ePage />} />
+        ) : null}
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="signup" />} />
         <Route path="/landing" element={<LandingPage />} />

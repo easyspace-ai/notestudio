@@ -3,10 +3,10 @@ import { apiOrigin, mergeAuthHeaders } from "@/api/http";
 /** GET authenticated PPTX blob and trigger browser download. */
 export async function downloadProjectPptx(
   projectId: string,
-  materialId: number,
+  materialId: number | string,
   filename: string,
 ): Promise<void> {
-  const url = `${apiOrigin()}/api/v1/projects/${projectId}/materials/${materialId}/pptx`;
+  const url = `${apiOrigin()}/api/v1/projects/${projectId}/materials/${encodeURIComponent(String(materialId))}/pptx`;
   const res = await fetch(url, { headers: mergeAuthHeaders() });
   if (!res.ok) {
     const text = await res.text();

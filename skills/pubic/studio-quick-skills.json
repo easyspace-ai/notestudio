@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "image-generation",
+      "skillPath": "image-generation",
+      "studioKind": "html",
+      "defaultTitle": "视觉内容",
+      "label": "图像生成",
+      "description": "Use this skill when the user requests to generate, create, imagine, or visualize images including characters, scenes, products, or any visual content. Supports structured prompts and reference images for guided generation.",
+      "icon": "file-code"
+    },
+    {
+      "id": "deep-research",
+      "skillPath": "deep-research",
+      "studioKind": "html",
+      "defaultTitle": "调研网页",
+      "label": "深度检索 / 调研",
+      "description": "Use this skill instead of WebSearch for ANY question requiring web research. Trigger on queries like \"what is X\", \"explain X\", \"compare X and Y\", \"research X\", or before content generation tasks. Provides systematic multi-angle research methodology instead of single superficial searches. Use this proactively when the user's question needs online information.",
+      "icon": "file-code"
+    },
+    {
+      "id": "ppt-master",
+      "skillPath": "ppt-master/skills/ppt-master",
+      "studioKind": "slides",
+      "defaultTitle": "PPT演示文稿",
+      "label": "生成 PPT 演示文稿",
+      "description": "AI-driven multi-format SVG content generation system. Converts source documents (PDF/DOCX/URL/Markdown) into high-quality SVG pages and exports to PPTX through multi-role collaboration. Use when user asks to \"create PPT\", \"make presentation\", \"生成PPT\", \"做PPT\", \"制作演示文稿\", or mentions \"ppt-master\".",
+      "icon": "presentation"
+    },
+    {
+      "id": "podcast-generation",
+      "skillPath": "podcast-generation",
+      "studioKind": "audio",
+      "defaultTitle": "播客",
+      "label": "生成播客音频",
+      "description": "Use this skill when the user requests to generate, create, or produce podcasts from text content. Converts written content into a two-host conversational podcast audio format with natural dialogue.",
+      "icon": "mic"
+    },
+    {
+      "id": "webpage-generator",
+      "skillPath": "webpage-generator",
+      "studioKind": "html",
+      "defaultTitle": "教学网页",
+      "label": "生成教学网页",
+      "description": "生成教育演示网页；当用户需要创建交互式教学页面、生成PPT式HTML演示文稿或制作学术报告网页时使用",
+      "icon": "file-code"
+    }
+  ]
+}

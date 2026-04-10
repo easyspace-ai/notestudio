@@ -42,5 +42,8 @@ web/
 /scripts/scale_dev_jobs.sh
 server
 frontend/.vite
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
 frontend/chrome-extension/
 WeKnora-Chrome-Extension

@@ -24,6 +24,16 @@ export function weknoraStudioJobToMaterial(job: WeKnoraStudioJob, projectId: str
   };
   if (job.error_message) payload.error_message = job.error_message;
   if (job.artifact_path) payload.artifact_path = job.artifact_path;
+  const fileUrl =
+    typeof payload.file_url === "string"
+      ? payload.file_url.trim()
+      : typeof payload.fileUrl === "string"
+        ? payload.fileUrl.trim()
+        : "";
+  if (fileUrl) {
+    if (!payload.url) payload.url = fileUrl;
+    if (!payload.file_url) payload.file_url = fileUrl;
+  }
 
   let subtitle = "";
   if (job.status === "failed") subtitle = job.error_message?.trim() || "生成失败";

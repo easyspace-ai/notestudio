@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	llmcontext "github.com/Tencent/WeKnora/internal/application/service/llmcontext"
@@ -302,7 +303,7 @@ func (s *sessionService) buildAgentConfig(
 // Returns the skill directories and allowed skills based on the selection mode:
 //   - "all": uses all preloaded skills
 //   - "selected": uses the explicitly selected skills
-//   - "none" or "": skills are disabled
+//   - "none" or "": skills are disabled (unless "" with selected_skills set — same as admin UI inference)
 func (s *sessionService) configureSkillsFromAgent(
 	ctx context.Context,
 	agentConfig *types.AgentConfig,
@@ -316,7 +317,12 @@ func (s *sessionService) configureSkillsFromAgent(
 		logger.Infof(ctx, "Sandbox is disabled: skills remain readable, but script execution is unavailable")
 	}
 
-	switch customAgent.Config.SkillsSelectionMode {
+	mode := strings.ToLower(strings.TrimSpace(customAgent.Config.SkillsSelectionMode))
+	if mode == "" && len(customAgent.Config.SelectedSkills) > 0 {
+		mode = "selected"
+	}
+
+	switch mode {
 	case "all":
 		dirs, allowed, disableAll, err := s.skillService.ResolveAgentSkillAllowlist(ctx)
 		if err != nil {
@@ -365,7 +371,7 @@ func (s *sessionService) configureSkillsFromAgent(
 	case "none", "":
 		// Skills disabled
 		agentConfig.SkillsEnabled = false
-		logger.Infof(ctx, "SkillsSelectionMode=%s: skills disabled", customAgent.Config.SkillsSelectionMode)
+		logger.Infof(ctx, "SkillsSelectionMode=%s: skills disabled", mode)
 	default:
 		// Unknown mode, disable skills
 		agentConfig.SkillsEnabled = false

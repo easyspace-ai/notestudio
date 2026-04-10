@@ -1,18 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import type { Edge, Node } from "@xyflow/react";
-import { ArrowUp, ChevronDown, Globe, Image as ImageIcon, AtSign, Sparkles, Brain, Square, Lightbulb, Wand2, Presentation, FileCode } from "lucide-react";
+import {
+  ArrowUp,
+  Brain,
+  ChevronDown,
+  ChevronRight,
+  FileCode,
+  Globe,
+  Image as ImageIcon,
+  AtSign,
+  Sparkles,
+  Square,
+  Lightbulb,
+  Wand2,
+} from "lucide-react";
 import { streamAgentChat } from "@/api/weknora/agentChatStream";
+import { continueAgentChatStream } from "@/api/weknora/continueStream";
 import * as messagesApi from "@/api/weknora/messages";
 import * as agentsApi from "@/api/weknora/agents";
 import * as knowledgeApi from "@/api/weknora/knowledge";
-import type { WeKnoraMessage } from "@/api/weknora/types";
+import { fetchStudioQuickSkills } from "@/api/weknora/studio";
+import type { WeKnoraAgentStep, WeKnoraMessage, WeKnoraToolResult, WeKnoraStudioQuickSkillItem } from "@/api/weknora/types";
 import type { WeKnoraAgent } from "@/api/weknora/agents";
 import type { WeKnoraStreamResponse } from "@/api/weknora/types";
-import { Reasoning, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { AgentCanvasFrame } from "@/components/weknora/agent-canvas-frame";
-import { CollapsibleContent } from "@/components/ui/collapsible";
-import { WeKnoraAssistantMarkdown } from "@/core/streamdown";
+import { WeKnoraAssistantMarkdown, buildKnowledgeFileIndex } from "@/core/streamdown";
+import { WeKnoraKbCitationProvider } from "@/components/project/weknora-kb-citation-context";
+import { studioQuickIconTone, studioQuickSkillIcon } from "@/lib/studioQuickIcons";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -132,50 +147,279 @@ function tryParseFileTree(raw: string): FileTreeInfo | null {
   return null;
 }
 
-// Collapsible thinking — same interaction model as deer-flow `ai-elements/reasoning`.
-function ThinkingBlock({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
-  return (
-    <Reasoning
-      isStreaming={!!isStreaming}
-      className="mb-3 rounded-xl border border-amber-200/80 bg-amber-50/50 shadow-sm"
-    >
-      <ReasoningTrigger
-        className="px-4 py-2.5 text-amber-900 hover:text-amber-950"
-        getThinkingMessage={(streaming) => (
-          <>
-            <Lightbulb className="size-4 shrink-0 text-amber-600" />
-            <span className="text-sm font-medium">{streaming ? "正在深度思考…" : "已深度思考"}</span>
-          </>
-        )}
+/** Reuse stream-time rendering for tool output (graph / file tree / markdown). */
+function StreamLikeToolOutput({ content, pending }: { content: string; pending?: boolean }) {
+  const graph = tryParseAgentGraph(content);
+  if (graph && (graph.nodes.length > 0 || graph.edges.length > 0)) {
+    return (
+      <AgentCanvasFrame
+        nodes={graph.nodes}
+        edges={graph.edges}
+        className="mt-1 min-h-[240px] border-slate-200"
       />
-      <CollapsibleContent className="border-t border-amber-200/60 px-4 pb-3 pt-2 outline-none data-[state=open]:animate-in">
-        <WeKnoraAssistantMarkdown streaming={!!isStreaming} className="text-amber-950">
-          {content}
-        </WeKnoraAssistantMarkdown>
-      </CollapsibleContent>
-    </Reasoning>
+    );
+  }
+  const fileTree = tryParseFileTree(content);
+  if (fileTree && fileTree.entries.length > 0) {
+    return (
+      <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+        {fileTree.root ? (
+          <div className="mb-2 text-xs text-slate-500">路径：{fileTree.root}</div>
+        ) : null}
+        <div className="max-h-52 overflow-auto text-xs leading-6 text-slate-700">
+          {fileTree.entries.map((entry, idx) => (
+            <div key={`${idx}-${entry}`} className="truncate font-mono">
+              {entry}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <WeKnoraAssistantMarkdown streaming={!!pending} className="text-inherit">
+      {content}
+    </WeKnoraAssistantMarkdown>
   );
 }
 
-function buildSuggestedQuestions(knowledgeTitles: string[]): string[] {
-  const titles = knowledgeTitles.filter(Boolean);
-  const primary = titles[0];
-  if (primary) {
-    return [
-      `请概括《${primary}》的核心内容`,
-      `请提炼《${primary}》中的关键观点与结论`,
-      `根据《${primary}》列出值得关注的问题`,
-      titles.length > 1
-        ? `请比较《${titles[0]}》和《${titles[1]}》的重点差异`
-        : `请根据《${primary}》给出一份简明摘要`,
-    ];
+function getToolIconAndLabel(name?: string) {
+  const n = name ?? "";
+  if (n === "search_knowledge" || n === "knowledge_search") return { tone: "emerald", label: "知识库检索" };
+  if (n === "grep_chunks") return { tone: "emerald", label: "片段匹配" };
+  if (n === "web_search") return { tone: "blue", label: "网络搜索" };
+  if (n === "web_fetch") return { tone: "blue", label: "网页获取" };
+  if (n === "todo_write") return { tone: "amber", label: "更新计划" };
+  if (n === "thinking") return { tone: "emerald", label: "深度思考" };
+  if (n === "get_document_info" || n === "list_knowledge_chunks") return { tone: "slate", label: "文档信息" };
+  if (n.startsWith("mcp_")) return { tone: "violet", label: n.slice(4).replace(/_/g, " ") };
+  return { tone: "slate", label: n || "工具调用" };
+}
+
+function getToolSummary(name?: string, args?: Record<string, unknown>, result?: WeKnoraToolResult | null): string | null {
+  const data = result?.data;
+  if (name === "search_knowledge" || name === "knowledge_search") {
+    const count = (data as any)?.count ?? (data as any)?.results?.length ?? 0;
+    if (count) return `找到 ${count} 条结果`;
   }
-  return [
-    "请概括当前资料的核心内容",
-    "请提炼这些资料的关键观点",
-    "请根据资料给出一份简明摘要",
-    "请列出资料里最值得关注的问题",
-  ];
+  if (name === "grep_chunks") {
+    const total = (data as any)?.total_matches ?? 0;
+    if (total) return `匹配 ${total} 处内容`;
+  }
+  if (name === "web_search") {
+    const count = (data as any)?.count ?? (data as any)?.results?.length ?? 0;
+    if (count) return `检索到 ${count} 条网页结果`;
+  }
+  if (name === "todo_write") {
+    const steps = (data as any)?.steps ?? [];
+    const done = steps.filter((s: any) => s.status === "completed").length;
+    const ing = steps.filter((s: any) => s.status === "in_progress").length;
+    if (steps.length) return `计划进度 ${done}/${steps.length}${ing ? `（进行中 ${ing}）` : ""}`;
+  }
+  if (name === "get_document_info") {
+    const title = (data as any)?.title ?? (data as any)?.documents?.[0]?.title;
+    if (title) return `文档：${title}`;
+  }
+  const q = args?.query ?? (args?.queries as any)?.[0];
+  if (typeof q === "string" && q.trim()) return `查询：${q.trim()}`;
+  return null;
+}
+
+type TimelineRowData = {
+  id: string;
+  type: "thinking" | "tool_call" | "tool_result" | "other";
+  title: string;
+  content?: string;
+  pending?: boolean;
+  success?: boolean;
+  args?: string;
+  meta?: { tone: string; label: string };
+};
+
+function TimelineItemCard({ item, streaming }: { item: TimelineRowData; streaming?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const isPending = !!item.pending;
+
+  useEffect(() => {
+    if (streaming && isPending) setOpen(true);
+  }, [streaming, isPending]);
+
+  const isThinking = item.type === "thinking";
+  const iconNode = isThinking ? (
+    <Lightbulb className="h-3.5 w-3.5 text-emerald-600" />
+  ) : item.type === "other" ? (
+    <Sparkles className="h-3.5 w-3.5 text-slate-500" />
+  ) : (
+    <FileCode className="h-3.5 w-3.5 text-slate-500" />
+  );
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-slate-50/60"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={cn(
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+              isThinking ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-600",
+            )}
+          >
+            {iconNode}
+          </span>
+          <span className="truncate text-sm text-slate-700">{item.title}</span>
+        </div>
+        {isPending ? (
+          <span className="ml-2 inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+        ) : (
+          <ChevronRight
+            className={cn("h-4 w-4 shrink-0 text-slate-400 transition-transform", open && "rotate-90")}
+          />
+        )}
+      </button>
+      {open && (
+        <div className="border-t border-slate-100 px-3 py-3 text-sm text-slate-700">
+          {item.args ? (
+            <pre className="mb-2 max-h-32 overflow-auto rounded-md bg-slate-50 p-2 text-xs leading-snug text-slate-600">
+              {item.args}
+            </pre>
+          ) : null}
+          {item.content ? (
+            <div className="min-w-0 text-inherit">
+              {isThinking ? (
+                <WeKnoraAssistantMarkdown streaming={!!streaming && isPending}>{item.content}</WeKnoraAssistantMarkdown>
+              ) : (
+                <StreamLikeToolOutput content={item.content} pending={!!streaming && isPending} />
+              )}
+            </div>
+          ) : item.args ? null : (
+            <span className="text-xs text-slate-400">暂无详情</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentTimeline({
+  rows,
+  title,
+  streaming,
+}: {
+  rows: TimelineRowData[];
+  title?: string;
+  streaming?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  if (!rows.length) return null;
+
+  return (
+    <div className="mb-2 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="mb-2 flex w-full items-center justify-between px-1 text-xs font-medium text-slate-500 hover:text-slate-600"
+      >
+        <div className="flex items-center gap-2">
+          <Brain className="h-3.5 w-3.5" />
+          <span>{title || `工具执行过程`}</span>
+        </div>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", !expanded && "-rotate-90")} />
+      </button>
+      {expanded && (
+        <div className="relative space-y-2 pl-4 before:absolute before:inset-y-1 before:left-[7px] before:w-px before:bg-slate-200">
+          {rows.map((row) => (
+            <div key={row.id} className="relative">
+              <span
+                className={cn(
+                  "absolute top-3 -left-[13px] h-2.5 w-2.5 rounded-full border",
+                  row.type === "thinking"
+                    ? "border-emerald-300 bg-emerald-200"
+                    : row.success === false
+                      ? "border-red-300 bg-red-200"
+                      : "border-slate-300 bg-slate-200",
+                )}
+              />
+              <TimelineItemCard item={row} streaming={streaming} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Renders DB-backed `agent_steps` so refresh restores 思考 + 工具轨迹（与流式过程同构）。 */
+function PersistedAgentStepsTimeline({ steps }: { steps: WeKnoraAgentStep[] }) {
+  if (!steps.length) return null;
+  const rows: TimelineRowData[] = [];
+  steps.forEach((step, si) => {
+    if (step.thought?.trim()) {
+      rows.push({
+        id: `thought-${si}`,
+        type: "thinking",
+        title: "已深度思考",
+        content: step.thought.trim(),
+      });
+    }
+    (step.tool_calls ?? []).forEach((tc, ti) => {
+      const meta = getToolIconAndLabel(tc.name);
+      const summary = getToolSummary(tc.name, tc.args, tc.result);
+      const out = tc.result?.output?.trim() ?? "";
+      const err = tc.result?.error?.trim() ?? "";
+      const success = tc.result?.success !== false && !err;
+      rows.push({
+        id: `tc-${si}-${ti}`,
+        type: "tool_call",
+        title: `${meta.label}: ${tc.name?.trim() || "tool"}${summary ? ` · ${summary}` : ""}`,
+        args: tc.args && Object.keys(tc.args).length > 0 ? JSON.stringify(tc.args, null, 2) : undefined,
+        content: out || err || undefined,
+        success,
+        meta,
+      });
+    });
+  });
+  return <AgentTimeline rows={rows} title={`已完成 ${rows.length} 个步骤`} />;
+}
+
+// Thinking card styled after frontend333 deepThink.vue (emerald theme, no auto-collapse).
+function ThinkingBlock({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+  const [open, setOpen] = useState(!!isStreaming);
+  useEffect(() => {
+    if (isStreaming) setOpen(true);
+  }, [isStreaming]);
+  return (
+    <div className="mb-3 overflow-hidden rounded-xl border border-emerald-200/70 bg-emerald-50/40 shadow-sm">
+      <button
+        type="button"
+        disabled={!!isStreaming}
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-emerald-100/30"
+      >
+        <div className="flex items-center gap-2 text-emerald-900">
+          {isStreaming ? (
+            <span className="relative flex h-4 w-4 items-center justify-center">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+          ) : (
+            <Lightbulb className="size-4 shrink-0 text-emerald-600" />
+          )}
+          <span className="text-sm font-medium">{isStreaming ? "正在深度思考…" : "已深度思考"}</span>
+        </div>
+        {!isStreaming && (
+          <ChevronDown className={cn("size-4 text-emerald-600 transition-transform", open && "rotate-180")} />
+        )}
+      </button>
+      {open && (
+        <div className="border-t border-emerald-200/50 px-4 py-3 text-sm text-emerald-950">
+          <WeKnoraAssistantMarkdown streaming={!!isStreaming}>{content}</WeKnoraAssistantMarkdown>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AgentPickerMenu(props: {
@@ -242,14 +486,22 @@ function AgentPickerMenu(props: {
 export function WeKnoraChatDock(props: {
   sessionId: string | null;
   knowledgeBaseId: string;
+  /** Current custom/builtin agent; used to filter Studio 快捷技能 to admin-configured skills. */
   agentId: string | null;
   /** Called when the user picks another agent from the header or input toolbar. */
   onAgentChange: (id: string) => void;
   projectName?: string;
-  knowledgeDocCount?: number;
-  knowledgeTitles?: string[];
   onFirstMessageComplete?: (sessionId: string, messages: { role: string; content: string }[]) => void;
   onQuickSkill?: (kind: string, title: string) => void;
+  /**
+   * When set, skips internal `/api/v1/skills/studio-quick` fetch so the parent can share one query
+   * with the Studio side panel (same list as 魔棒).
+   */
+  studioQuickSkillsFromParent?: {
+    items: WeKnoraStudioQuickSkillItem[];
+    isLoading: boolean;
+    isError: boolean;
+  };
 }) {
   const {
     sessionId,
@@ -257,10 +509,9 @@ export function WeKnoraChatDock(props: {
     agentId,
     onAgentChange,
     projectName,
-    knowledgeDocCount = 0,
-    knowledgeTitles = [],
     onFirstMessageComplete,
     onQuickSkill,
+    studioQuickSkillsFromParent,
   } = props;
 
   const qc = useQueryClient();
@@ -269,6 +520,7 @@ export function WeKnoraChatDock(props: {
   const [streamEvents, setStreamEvents] = useState<StreamEventItem[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isContinuing, setIsContinuing] = useState(false);
   const [showMentionPopover, setShowMentionPopover] = useState(false);
   const [showSkillPopover, setShowSkillPopover] = useState(false);
   const [knowledgeDocs, setKnowledgeDocs] = useState<{id: string; title: string}[]>([]);
@@ -281,12 +533,46 @@ export function WeKnoraChatDock(props: {
     queryKey: ["weknora-messages", sessionId],
     queryFn: () => messagesApi.loadMessages(sessionId!, 80),
     enabled: sessionId != null && sessionId.length > 0,
+    /** 刷新后服务端可能仍在写助手消息；轮询直到 is_completed 为 true，避免长期停在「未完成」占位。 */
+    refetchInterval: (q) => {
+      const data = q.state.data as WeKnoraMessage[] | undefined;
+      if (!data?.length) {
+        return false;
+      }
+      const rows = [...data].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+      const last = rows[rows.length - 1];
+      if (last?.role === "assistant" && last.is_completed === false) {
+        return 2500;
+      }
+      return false;
+    },
   });
 
   const agents = useQuery({
     queryKey: ["weknora-agents"],
     queryFn: () => agentsApi.listAgents(),
   });
+
+  const studioQuickSkillsQuery = useQuery({
+    queryKey: ["weknora-studio-quick-skills", agentId],
+    queryFn: () => fetchStudioQuickSkills(agentId),
+    enabled:
+      studioQuickSkillsFromParent === undefined &&
+      agentId != null &&
+      agentId.length > 0,
+    staleTime: 60_000,
+  });
+
+  const studioQuickSkills =
+    studioQuickSkillsFromParent?.items ?? studioQuickSkillsQuery.data?.items ?? [];
+  const studioQuickLoading = studioQuickSkillsFromParent
+    ? studioQuickSkillsFromParent.isLoading
+    : studioQuickSkillsQuery.isLoading;
+  const studioQuickError = studioQuickSkillsFromParent
+    ? studioQuickSkillsFromParent.isError
+    : studioQuickSkillsQuery.isError;
 
   const agentRows = useMemo(() => agents.data ?? [], [agents.data]);
 
@@ -298,6 +584,7 @@ export function WeKnoraChatDock(props: {
     setStreamingText(null);
     setStreamEvents([]);
     setStreamError(null);
+    setIsContinuing(false);
   }, [sessionId]);
 
   // Auto-scroll to bottom
@@ -331,6 +618,8 @@ export function WeKnoraChatDock(props: {
         setKnowledgeDocs([]);
       });
   }, [knowledgeBaseId]);
+
+  const kbFileIndex = useMemo(() => buildKnowledgeFileIndex(knowledgeDocs), [knowledgeDocs]);
 
   const handleStreamEvent = useCallback((evt: WeKnoraStreamResponse) => {
     if (evt.response_type === "answer" || evt.response_type === "complete") return;
@@ -418,6 +707,51 @@ export function WeKnoraChatDock(props: {
     });
   }, []);
 
+  // Auto-resume incomplete assistant message via continue-stream
+  useEffect(() => {
+    if (!sessionId) return;
+    if (isStreaming || isContinuing) return;
+    const data = history.data as WeKnoraMessage[] | undefined;
+    if (!data?.length) return;
+    const sorted = [...data].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    const last = sorted[sorted.length - 1];
+    if (last?.role === "assistant" && last.is_completed === false && last.id) {
+      setIsContinuing(true);
+      setStreamError(null);
+      setStreamingText("");
+      setStreamEvents([]);
+      setIsStreaming(true);
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+      void continueAgentChatStream(
+        { sessionId, messageId: last.id },
+        {
+          onText: (t) => setStreamingText(t),
+          onEvent: handleStreamEvent,
+          onError: (e) => {
+            setStreamError(e.message);
+            setIsStreaming(false);
+            setIsContinuing(false);
+          },
+          onComplete: () => {
+            setStreamingText(null);
+            setStreamEvents([]);
+            setIsStreaming(false);
+            setIsContinuing(false);
+            void qc.invalidateQueries({ queryKey: ["weknora-messages", sessionId] });
+          },
+          signal: ac.signal,
+        },
+      ).catch(() => {
+        setIsStreaming(false);
+        setIsContinuing(false);
+      });
+    }
+  }, [sessionId, history.data, isStreaming, isContinuing, qc, handleStreamEvent]);
+
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
     setIsStreaming(false);
@@ -451,6 +785,9 @@ export function WeKnoraChatDock(props: {
           {
             onText: (t) => setStreamingText(t),
             onEvent: handleStreamEvent,
+            onConnected: () => {
+              void qc.invalidateQueries({ queryKey: ["weknora-messages", sessionId] });
+            },
             onError: (e) => {
               setStreamError(e.message);
               setIsStreaming(false);
@@ -492,13 +829,21 @@ export function WeKnoraChatDock(props: {
 
   const busy = isStreaming;
 
-  const displayMessages: WeKnoraMessage[] = [...(history.data ?? [])].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-  );
+  const displayMessages: WeKnoraMessage[] = useMemo(() => {
+    const sorted = [...(history.data ?? [])].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    if (isContinuing && sorted.length > 0) {
+      const last = sorted[sorted.length - 1];
+      if (last?.role === "assistant" && last.is_completed === false) {
+        return sorted.slice(0, -1);
+      }
+    }
+    return sorted;
+  }, [history.data, isContinuing]);
   const showAssistantPending =
     streamingText != null || streamEvents.length > 0 || (busy && streamingText === "");
   const isEmpty = displayMessages.length === 0 && !showAssistantPending;
-  const suggestedQuestions = buildSuggestedQuestions(knowledgeTitles);
 
   const handleSend = useCallback(() => {
     const q = input.trim();
@@ -509,13 +854,6 @@ export function WeKnoraChatDock(props: {
     }
     void sendMut.mutateAsync(q);
   }, [input, busy, agentId, sendMut]);
-
-  const handleSuggestedClick = useCallback((q: string) => {
-    setInput(q);
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-    }
-  }, []);
 
   // 渲染单条消息气泡
   const renderMessage = (m: WeKnoraMessage) => {
@@ -534,6 +872,14 @@ export function WeKnoraChatDock(props: {
     }
 
     const { thinking, content: answerMd } = splitRedactedThinking(m.content);
+    const persistedSteps = Array.isArray(m.agent_steps) ? m.agent_steps : [];
+    const hasPersistedSteps = persistedSteps.length > 0;
+    const hasPersistedThought = persistedSteps.some((s) => s.thought?.trim());
+    /** 优先使用落库的 thought；若 steps 中没有 thought，则回退到正文里 redacted_thinking，避免刷新后思考过程丢失。 */
+    const thinkingFromContent = hasPersistedThought ? null : thinking;
+    const incomplete = m.is_completed === false;
+    const hasAnswer = Boolean(answerMd?.trim());
+    const showIncompleteHint = incomplete && !thinkingFromContent && !hasPersistedSteps && !hasAnswer;
 
     return (
       <div key={m.id} className="flex w-full gap-3 px-4 py-3 justify-start">
@@ -541,10 +887,18 @@ export function WeKnoraChatDock(props: {
           <Sparkles className="h-4 w-4 text-slate-600" />
         </div>
         <div className="max-w-[min(85%,720px)] flex flex-col gap-1">
-          {thinking && <ThinkingBlock content={thinking} />}
-          {answerMd ? (
+          {hasPersistedSteps ? <PersistedAgentStepsTimeline steps={persistedSteps} /> : null}
+          {thinkingFromContent ? <ThinkingBlock content={thinkingFromContent} /> : null}
+          {hasAnswer ? (
             <div className="rounded-2xl rounded-bl-md bg-[#f5f5f5] px-5 py-3.5 text-[15px] text-[#1a1a1a]">
               <WeKnoraAssistantMarkdown streaming={false}>{answerMd}</WeKnoraAssistantMarkdown>
+            </div>
+          ) : null}
+          {showIncompleteHint ? (
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0ms" }} />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "150ms" }} />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "300ms" }} />
             </div>
           ) : null}
         </div>
@@ -553,6 +907,7 @@ export function WeKnoraChatDock(props: {
   };
 
   return (
+    <WeKnoraKbCitationProvider value={kbFileIndex}>
     <div className="flex h-full min-h-0 flex-col bg-white">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-black/[0.06] px-5 py-3">
@@ -602,38 +957,6 @@ export function WeKnoraChatDock(props: {
           </div>
         )}
 
-        {sessionId && isEmpty && (
-          /* Empty state - Frontend style */
-          <div className="flex h-full flex-col items-center justify-center px-6 pb-20">
-            <div className="mb-10 text-center">
-              <h1 className="mb-3 text-3xl font-bold tracking-tight text-gray-900">
-                {projectName?.trim() ? `围绕「${projectName.trim()}」资料提问` : "围绕当前资料提问"}
-              </h1>
-              <p className="text-base text-gray-400">
-                {knowledgeDocCount === 0
-                  ? "请先上传资料，我将根据文档内容为您解答"
-                  : "可以从资料摘要、重点提炼、问题梳理或对比分析开始"}
-              </p>
-            </div>
-
-            {/* Suggested questions - only show when docs exist */}
-            {knowledgeDocCount > 0 && (
-              <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-center gap-2.5 px-4">
-                {suggestedQuestions.map((q, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => handleSuggestedClick(q)}
-                    className="rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm text-gray-600 shadow-sm transition-all hover:border-gray-300 hover:bg-gray-50 hover:shadow-md"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {sessionId && !isEmpty && (
           <div className="flex flex-col gap-1 py-4">
             {displayMessages.map(renderMessage)}
@@ -643,96 +966,37 @@ export function WeKnoraChatDock(props: {
                   <Sparkles className="h-4 w-4 text-slate-600" />
                 </div>
                 <div className="max-w-[min(85%,720px)] flex flex-col gap-1">
-                  {streamEvents.length > 0 && (
-                    <div className="mb-1 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
-                      <div className="mb-2 flex items-center gap-2 px-1 text-xs font-medium text-slate-500">
-                        <Brain className="h-3.5 w-3.5" />
-                        工具执行过程
-                      </div>
-                      <div className="relative space-y-2 pl-4 before:absolute before:inset-y-0 before:left-[7px] before:w-px before:bg-slate-200">
-                        {streamEvents.map((ev) => {
-                          if (ev.type === "thinking" && ev.content) {
-                            return (
-                              <div key={ev.id} className="relative">
-                                <span className="absolute top-3 -left-[13px] h-2.5 w-2.5 rounded-full border border-amber-300 bg-amber-200" />
-                                <ThinkingBlock content={ev.content} isStreaming={ev.pending} />
-                              </div>
-                            );
-                          }
-                          const fileTree = ev.content ? tryParseFileTree(ev.content) : null;
-                          return (
-                            <div
-                              key={ev.id}
-                              className={cn(
-                                "relative rounded-xl border bg-white px-4 py-3 text-sm shadow-sm",
-                                ev.success === false
-                                  ? "border-red-200 text-red-700"
-                                  : "border-slate-200 text-slate-700",
-                              )}
-                            >
-                              <span
-                                className={cn(
-                                  "absolute top-3 -left-[13px] h-2.5 w-2.5 rounded-full border",
-                                  ev.success === false
-                                    ? "border-red-300 bg-red-200"
-                                    : "border-slate-300 bg-slate-200",
-                                )}
-                              />
-                              <div className="mb-1 flex items-center justify-between">
-                                <span className="font-medium">{ev.title}</span>
-                                {ev.pending ? (
-                                  <span className="text-xs text-slate-400">执行中…</span>
-                                ) : null}
-                              </div>
-                              {ev.content ? (
-                                <div className="mt-1 min-w-0 text-inherit">
-                                  {ev.type === "tool_result" ? (
-                                    (() => {
-                                      const graph = tryParseAgentGraph(ev.content);
-                                      if (graph && (graph.nodes.length > 0 || graph.edges.length > 0)) {
-                                        return (
-                                          <AgentCanvasFrame
-                                            nodes={graph.nodes}
-                                            edges={graph.edges}
-                                            className="mt-1 min-h-[240px] border-slate-200"
-                                          />
-                                        );
-                                      }
-                                      if (fileTree && fileTree.entries.length > 0) {
-                                        return (
-                                          <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                            {fileTree.root ? (
-                                              <div className="mb-2 text-xs text-slate-500">路径：{fileTree.root}</div>
-                                            ) : null}
-                                            <div className="max-h-52 overflow-auto text-xs leading-6 text-slate-700">
-                                              {fileTree.entries.map((entry, idx) => (
-                                                <div key={`${idx}-${entry}`} className="truncate font-mono">
-                                                  {entry}
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        );
-                                      }
-                                      return (
-                                        <WeKnoraAssistantMarkdown streaming={!!ev.pending} className="text-inherit">
-                                          {ev.content}
-                                        </WeKnoraAssistantMarkdown>
-                                      );
-                                    })()
-                                  ) : (
-                                    <WeKnoraAssistantMarkdown streaming={!!ev.pending} className="text-inherit">
-                                      {ev.content}
-                                    </WeKnoraAssistantMarkdown>
-                                  )}
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  {(() => {
+                    const rows: TimelineRowData[] = streamEvents.map((ev) => {
+                      if (ev.type === "thinking") {
+                        return {
+                          id: ev.id,
+                          type: "thinking",
+                          title: ev.pending ? "正在深度思考…" : "已深度思考",
+                          content: ev.content ?? "",
+                          pending: ev.pending,
+                        };
+                      }
+                      const toolName = ev.title.replace(/^调用工具:\s*/, "").replace(/^工具结果:\s*/, "").trim();
+                      const meta = getToolIconAndLabel(toolName);
+                      const isResult = ev.type === "tool_result";
+                      return {
+                        id: ev.id,
+                        type: isResult ? "tool_result" : "tool_call",
+                        title: isResult
+                          ? `工具结果: ${meta.label}${ev.success === false ? " ✗" : " ✓"}`
+                          : `调用 ${meta.label}: ${toolName || "tool"}`,
+                        content: ev.content ?? "",
+                        pending: ev.pending,
+                        success: ev.success,
+                        args: ev.type === "tool_call" ? (ev.content ?? "") : undefined,
+                        meta,
+                      };
+                    });
+                    return rows.length > 0 ? (
+                      <AgentTimeline rows={rows} title="工具执行过程" streaming={busy} />
+                    ) : null;
+                  })()}
                   {(() => {
                     const parsed = streamingText
                       ? splitRedactedThinking(streamingText)
@@ -865,38 +1129,43 @@ export function WeKnoraChatDock(props: {
                           选择技能
                         </div>
                         <ul className="max-h-48 overflow-y-auto">
-                          <li>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onQuickSkill?.("slides", "PPT演示文稿");
-                                setShowSkillPopover(false);
-                              }}
-                              className="w-full truncate rounded-lg px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-                              title="HTML PPT 精致演示文稿设计器"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Presentation className="h-4 w-4 text-indigo-500" />
-                                <span>生成 PPT 演示文稿</span>
-                              </div>
-                            </button>
-                          </li>
-                          <li>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onQuickSkill?.("html", "教学网页");
-                                setShowSkillPopover(false);
-                              }}
-                              className="w-full truncate rounded-lg px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-                              title="网页生成器"
-                            >
-                              <div className="flex items-center gap-2">
-                                <FileCode className="h-4 w-4 text-emerald-500" />
-                                <span>生成教学网页</span>
-                              </div>
-                            </button>
-                          </li>
+                          {!agentId ? (
+                            <li className="px-2 py-3 text-center text-xs text-gray-400">请选择智能体后查看可用技能</li>
+                          ) : studioQuickLoading ? (
+                            <li className="px-2 py-3 text-center text-xs text-gray-400">加载技能列表…</li>
+                          ) : studioQuickError ? (
+                            <li className="px-2 py-3 text-center text-xs text-amber-600">
+                              无法加载技能列表，请稍后重试
+                            </li>
+                          ) : studioQuickSkills.length === 0 ? (
+                            <li className="px-2 py-3 text-center text-xs text-gray-400">
+                              当前智能体下没有可用的 Studio 快捷项（数据来自接口 /api/v1/skills/studio-quick；仅含可对应网页/幻灯片/播客等
+                              Studio 任务的技能；如 image-generation 等不会出现在此菜单）
+                            </li>
+                          ) : (
+                            studioQuickSkills.map((skill) => {
+                              const Icon = studioQuickSkillIcon(skill.icon);
+                              const iconTone = studioQuickIconTone(skill.icon);
+                              return (
+                                <li key={skill.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onQuickSkill?.(skill.studioKind, skill.defaultTitle);
+                                      setShowSkillPopover(false);
+                                    }}
+                                    className="w-full truncate rounded-lg px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                                    title={skill.description?.trim() || skill.label}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Icon className={cn("h-4 w-4 shrink-0", iconTone)} />
+                                      <span>{skill.label}</span>
+                                    </div>
+                                  </button>
+                                </li>
+                              );
+                            })
+                          )}
                         </ul>
                       </div>
                     </>
@@ -984,5 +1253,6 @@ export function WeKnoraChatDock(props: {
         </div>
       )}
     </div>
+    </WeKnoraKbCitationProvider>
   );
 }

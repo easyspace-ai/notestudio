@@ -1,18 +1,22 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { ComponentProps } from "react";
 
 import { MessageResponse } from "@/components/ai-elements/message";
+import { useWeKnoraKbFileIndex } from "@/components/project/weknora-kb-citation-context";
 import { cn } from "@/lib/utils";
 
 import { assistantStreamdownPlugins } from "./plugins";
+import { preprocessKbCitationTags, preprocessKbPlainDocNames } from "./preprocess-kb-tags";
+import { WeKnoraMarkdownAnchor } from "./weknora-markdown-anchor";
 
 export type WeKnoraAssistantMarkdownProps = Omit<
   ComponentProps<typeof MessageResponse>,
-  "remarkPlugins" | "rehypePlugins" | "children"
+  "remarkPlugins" | "rehypePlugins" | "children" | "components"
 > & {
   children: string;
   /** Partial markdown while SSE is in flight (Streamdown incomplete parser). */
   streaming?: boolean;
+  components?: ComponentProps<typeof MessageResponse>["components"];
 };
 
 /**
@@ -23,8 +27,26 @@ export const WeKnoraAssistantMarkdown = memo(function WeKnoraAssistantMarkdown({
   className,
   streaming = false,
   children,
+  components: componentsFromProps,
   ...rest
 }: WeKnoraAssistantMarkdownProps) {
+  const kbFileIndex = useWeKnoraKbFileIndex();
+  const processed = useMemo(() => {
+    let s = preprocessKbCitationTags(children);
+    if (kbFileIndex && kbFileIndex.size > 0) {
+      s = preprocessKbPlainDocNames(s, kbFileIndex);
+    }
+    return s;
+  }, [children, kbFileIndex]);
+
+  const components = useMemo(
+    () => ({
+      ...componentsFromProps,
+      a: WeKnoraMarkdownAnchor,
+    }),
+    [componentsFromProps],
+  );
+
   return (
     <MessageResponse
       className={cn(
@@ -41,9 +63,10 @@ export const WeKnoraAssistantMarkdown = memo(function WeKnoraAssistantMarkdown({
       parseIncompleteMarkdown={streaming}
       controls={{ code: true, table: true, mermaid: true }}
       shikiTheme={["github-light", "github-dark"]}
+      components={components}
       {...rest}
     >
-      {children}
+      {processed}
     </MessageResponse>
   );
 });

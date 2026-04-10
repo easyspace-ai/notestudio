@@ -8,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
 import * as weknoraAuth from "@/api/weknora/auth";
 import { setAuthTokenGetter, setOnUnauthorized, setRefreshTokenHandlers } from "@/api/http";
 import type { WeKnoraUserInfo } from "@/api/weknora/types";
@@ -45,8 +44,15 @@ function clientRequiresAuth(): boolean {
   return import.meta.env.VITE_REQUIRE_AUTH === "true";
 }
 
+/** 401 时跳转登录页。不用 `useNavigate`，避免 Auth 与 Router 包裹顺序或双份 react-router 时运行期报错。 */
+function redirectToLoginPage(): void {
+  if (typeof window === "undefined") return;
+  const path = "/login";
+  if (window.location.pathname === path) return;
+  window.location.replace(path);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const navigate = useNavigate();
   const [token, setToken] = useState<string | null>(() => readStoredToken());
   const [user, setUser] = useState<WeKnoraUserInfo | null>(null);
   const [ready, setReady] = useState(false);
@@ -117,10 +123,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       writeStoredRefreshToken(null);
       setToken(null);
       setUser(null);
-      navigate("/login", { replace: true });
+      redirectToLoginPage();
     });
     return () => setOnUnauthorized(null);
-  }, [ready, navigate]);
+  }, [ready]);
 
   useEffect(() => {
     let cancelled = false;

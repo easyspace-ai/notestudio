@@ -1,5 +1,7 @@
 package event
 
+import "github.com/Tencent/WeKnora/internal/types"
+
 // EventData contains common event data structures for different stages
 
 // QueryData represents query-related event data
@@ -107,10 +109,10 @@ type AgentPlanData struct {
 
 // AgentStepData represents agent step event data
 type AgentStepData struct {
-	Iteration int         `json:"iteration"`
-	Thought   string      `json:"thought"`
-	ToolCalls interface{} `json:"tool_calls"` // []types.ToolCall
-	Duration  int64       `json:"duration_ms"`
+	Iteration int           `json:"iteration"`
+	Thought   string        `json:"thought"`
+	ToolCalls []types.ToolCall `json:"tool_calls"`
+	Duration  int64         `json:"duration_ms"`
 }
 
 // AgentActionData represents agent tool execution event data
@@ -137,8 +139,8 @@ type AgentCompleteData struct {
 	SessionID       string                 `json:"session_id"`
 	TotalSteps      int                    `json:"total_steps"`
 	FinalAnswer     string                 `json:"final_answer"`
-	KnowledgeRefs   []interface{}          `json:"knowledge_refs,omitempty"` // []*types.SearchResult
-	AgentSteps      interface{}            `json:"agent_steps,omitempty"`    // []types.AgentStep - detailed execution steps
+	KnowledgeRefs   []*types.SearchResult  `json:"knowledge_refs,omitempty"`
+	AgentSteps      []types.AgentStep      `json:"agent_steps,omitempty"`
 	TotalDurationMs int64                  `json:"total_duration_ms"`
 	MessageID       string                 `json:"message_id,omitempty"` // Assistant message ID
 	RequestID       string                 `json:"request_id,omitempty"`
@@ -178,8 +180,8 @@ type AgentToolResultData struct {
 
 // AgentReferencesData represents knowledge references data
 type AgentReferencesData struct {
-	References interface{} `json:"references"` // []*types.SearchResult
-	Iteration  int         `json:"iteration"`
+	References []*types.SearchResult `json:"references"`
+	Iteration  int                   `json:"iteration"`
 }
 
 // AgentFinalAnswerData represents final answer streaming data

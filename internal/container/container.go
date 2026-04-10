@@ -182,6 +182,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewMCPServiceService))
 	must(container.Provide(service.NewCustomAgentService))
 	must(container.Provide(service.NewSkillService))
+	must(container.Invoke(func(svc interfaces.SkillService) error {
+		warmCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_, err := svc.GetStudioQuickSkillsManifest(warmCtx)
+		return err
+	}))
 	must(container.Provide(memoryService.NewMemoryService))
 
 	// Web search service (needed by AgentService)
@@ -359,6 +365,20 @@ func initContextStorage(redisClient *redis.Client) (llmcontext.ContextStorage, e
 	return storage, nil
 }
 
+// effectiveRelationalDBDriver resolves DB_DRIVER: explicit env, else postgres if DB_HOST is set, else sqlite.
+func effectiveRelationalDBDriver() string {
+	d := strings.TrimSpace(strings.ToLower(os.Getenv("DB_DRIVER")))
+	if d != "" {
+		return d
+	}
+	if strings.TrimSpace(os.Getenv("DB_HOST")) != "" {
+		logger.Infof(context.Background(), "DB_DRIVER unset but DB_HOST is set; using driver=postgres")
+		return "postgres"
+	}
+	logger.Infof(context.Background(), "DB_DRIVER unset; defaulting to driver=sqlite (data path from DB_PATH or ./data/weknora.db)")
+	return "sqlite"
+}
+
 // initDatabase initializes database connection
 // Creates and configures database connection based on environment configuration
 // Supports multiple database backends (PostgreSQL)
@@ -369,9 +389,10 @@ func initContextStorage(redisClient *redis.Client) (llmcontext.ContextStorage, e
 //   - Configured database connection
 //   - Error if connection fails
 func initDatabase(cfg *config.Config) (*gorm.DB, error) {
+	driver := effectiveRelationalDBDriver()
 	var dialector gorm.Dialector
 	var migrateDSN string
-	switch os.Getenv("DB_DRIVER") {
+	switch driver {
 	case "postgres":
 		// DSN for GORM (key-value format)
 		gormDSN := fmt.Sprintf(
@@ -431,7 +452,7 @@ func initDatabase(cfg *config.Config) (*gorm.DB, error) {
 		migrateDSN = "sqlite3://" + dbPath
 		logger.Infof(context.Background(), "DB Config: driver=sqlite path=%s", dbPath)
 	default:
-		return nil, fmt.Errorf("unsupported database driver: %s", os.Getenv("DB_DRIVER"))
+		return nil, fmt.Errorf("unsupported database driver: %q (supported: postgres, sqlite)", driver)
 	}
 	db, err := gorm.Open(dialector, &gorm.Config{
 		NowFunc: func() time.Time {
@@ -442,7 +463,7 @@ func initDatabase(cfg *config.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	if os.Getenv("DB_DRIVER") == "sqlite" {
+	if driver == "sqlite" {
 		sqlDB, err := db.DB()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
@@ -489,7 +510,7 @@ func initDatabase(cfg *config.Config) (*gorm.DB, error) {
 	}
 
 	// Configure connection pool parameters
-	if os.Getenv("DB_DRIVER") == "sqlite" {
+	if driver == "sqlite" {
 		// SQLite only supports one concurrent writer even in WAL mode.
 		// Limiting to a single open connection serialises all DB access and
 		// prevents "database is locked" errors from concurrent goroutines.

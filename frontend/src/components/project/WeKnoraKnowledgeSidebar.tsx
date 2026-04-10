@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, MoreHorizontal, Plus, Search, Trash2 } from "lucide-react";
+import { FileText, Loader2, MoreHorizontal, Plus, Search, Trash2 } from "lucide-react";
 import type { WeKnoraKnowledge } from "@/api/weknora/types";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +18,15 @@ function formatFileSize(n: number): string {
 
 const displayName = (k: WeKnoraKnowledge) =>
   (k.file_name || k.title || "").trim() || "未命名";
+
+function knowledgeStatusFlags(parseStatus: string | undefined) {
+  const s = (parseStatus ?? "").trim().toLowerCase();
+  return {
+    raw: (parseStatus ?? "").trim(),
+    processing: s === "pending" || s === "processing",
+    failed: s === "failed",
+  };
+}
 
 type Props = {
   kbReady: boolean;
@@ -104,21 +113,50 @@ export function WeKnoraKnowledgeSidebar(props: Props) {
         {!loading &&
           filtered.map((k) => {
             const active = selectedId === k.id;
-            const status = (k.parse_status || "").trim();
+            const { raw: statusRaw, processing, failed } = knowledgeStatusFlags(k.parse_status);
             return (
               <li key={k.id}>
                 <div
                   className={cn(
                     "group flex items-center gap-1 rounded-xl px-2 py-2 text-left text-sm transition-colors cursor-pointer",
                     active ? "bg-[#E0E0E0] font-medium" : "hover:bg-muted/80",
+                    processing &&
+                      "bg-amber-500/[0.06] ring-1 ring-amber-500/25 ring-inset dark:bg-amber-400/[0.08] dark:ring-amber-400/20",
                   )}
                   onClick={() => onSelect(k)}
+                  aria-busy={processing}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                    <FileText className="text-muted-foreground h-4 w-4 shrink-0" />
+                    <FileText
+                      className={cn(
+                        "h-4 w-4 shrink-0",
+                        processing ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+                      )}
+                      aria-hidden
+                    />
                     <span className="min-w-0 flex-1 truncate">{displayName(k)}</span>
-                    {status ? (
-                      <span className="text-muted-foreground shrink-0 text-[10px] uppercase">{status}</span>
+                    {statusRaw ? (
+                      processing ? (
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+                            "border-amber-500/40 bg-amber-500/12 text-amber-900 shadow-sm",
+                            "dark:border-amber-400/35 dark:bg-amber-400/15 dark:text-amber-50",
+                          )}
+                        >
+                          <Loader2
+                            className="h-3 w-3 shrink-0 animate-spin text-amber-700 dark:text-amber-200"
+                            aria-hidden
+                          />
+                          {statusRaw}
+                        </span>
+                      ) : failed ? (
+                        <span className="text-destructive shrink-0 text-[10px] font-medium uppercase">
+                          {statusRaw}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground shrink-0 text-[10px] uppercase">{statusRaw}</span>
+                      )
                     ) : null}
                   </div>
                   <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">

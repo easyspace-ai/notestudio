@@ -565,127 +565,7 @@ onChunk((data) => {
         return;
     }
     
-    // 判断是否是 Agent 模式的响应
-    // 注意：'answer', 'complete', 'references' 类型可能在两种模式下都存在
-    // 只有 'thinking', 'tool_call', 'tool_result', 'reflection' 是 Agent 专有的
-    const isAgentOnlyResponse = data.response_type === 'thinking' || 
-                               data.response_type === 'tool_call' || 
-                               data.response_type === 'tool_result' ||
-                               data.response_type === 'reflection';
-    
-    // 检查当前消息是否已经是 Agent 模式
-    const lastMessage = messagesList[messagesList.length - 1];
-    const isCurrentlyAgentMode = lastMessage?.isAgentMode === true;
-    
-    // 如果是 Agent 专有的响应类型，或者当前消息已经是 Agent 模式，则走 Agent 处理
-    const shouldHandleAsAgent = isAgentOnlyResponse || isCurrentlyAgentMode;
-    
-    // 处理 references 事件 - 在两种模式下都需要处理，但不改变模式
-    if (data.response_type === 'references') {
-        // 如果当前是 Agent 模式，走 Agent 处理
-        if (isCurrentlyAgentMode) {
-            handleAgentChunk(data);
-            return;
-        }
-        // 非 Agent 模式：将 references 保存到消息中供 botmsg 使用
-        let existingMessage = messagesList.findLast((item) => item.request_id === data.id || item.id === data.id);
-        
-        // 如果消息还不存在，先创建一个空的 assistant 消息
-        if (!existingMessage) {
-            existingMessage = {
-                id: data.id,
-                request_id: data.id,
-                role: 'assistant',
-                content: '',
-                showThink: false,
-                thinkContent: '',
-                thinking: false,
-                is_completed: false,
-                knowledge_references: []
-            };
-            messagesList.push(existingMessage);
-            loading.value = false; // 消息已创建，关闭 loading
-            scrollToBottom();
-        }
-        
-        existingMessage.knowledge_references = data.knowledge_references || data.data?.references || [];
-        console.log('[References] Saved to message, count:', existingMessage.knowledge_references.length);
-        return;
-    }
-    
-    // Agent 模式处理（包括 stop 事件）
-    if (shouldHandleAsAgent) {
-        // 在 handleAgentChunk 中处理 loading 状态
-        handleAgentChunk(data);
-        
-        // 对于 stop 事件，额外处理全局状态
-        if (data.response_type === 'stop') {
-            console.log('[Stop Event] Generation stopped');
-            loading.value = false;
-            isReplying.value = false;
-            // 清空当前 assistant message ID
-            currentAssistantMessageId.value = '';
-        }
-        return;
-    }
-    
-    // 原有的知识库 QA 处理逻辑（非 Agent 模式）
-    // answer 内容中可能包含 <think>...</think> 标签
-    
-    // 检查消息是否已经完成，如果已完成则忽略后续的完成事件（防止空内容覆盖）
-    const existingMessage = messagesList.findLast((item) => {
-        if (item.request_id === data.id) {
-            return true
-        }
-        return item.id === data.id;
-    });
-    
-    // 如果消息已完成且当前事件是完成事件（done=true 且无内容），直接忽略
-    if (existingMessage?.is_completed && data.done && !data.content) {
-        console.log('[Non-Agent] Ignoring duplicate completion event for completed message');
-        return;
-    }
-    
-    fullContent.value += data.content;
-    let obj = { ...data, content: '', role: 'assistant', showThink: false, is_completed: false };
-
-    // 检查是否为 fallback 回答（未从知识库检索到内容）
-    if (data.data?.is_fallback) {
-        obj.is_fallback = true;
-    }
-
-    if (fullContent.value.includes('<redacted_thinking>') && !fullContent.value.includes('<\/redacted_thinking>')) {
-        obj.thinking = true;
-        obj.showThink = true;
-        obj.content = '';
-        obj.thinkContent = fullContent.value.replace('<redacted_thinking>', '').trim();
-    } else if (fullContent.value.includes('<redacted_thinking>') && fullContent.value.includes('<\/redacted_thinking>')) {
-        obj.thinking = false;
-        obj.showThink = true;
-        // Use lastIndexOf to handle edge cases with multiple </think> occurrences,
-        // consistent with history loading logic (line 280)
-        const index = fullContent.value.lastIndexOf('<\/redacted_thinking>');
-        obj.thinkContent = fullContent.value.substring(0, index).replace('<redacted_thinking>', '').trim();
-        obj.content = fullContent.value.substring(index + '</redacted_thinking>'.length).trim();
-    } else {
-        obj.content = fullContent.value;
-    }
-    
-    if (!existingMessage) {
-        loading.value = false; // 消息即将创建，关闭 loading
-    }
-    
-    if (data.done) {
-        // 标记消息已完成
-        obj.is_completed = true;
-        // 标题生成已改为异步事件推送，不再需要在这里手动调用
-        // 如果标题还未生成，前端会通过 SSE 事件接收
-        isReplying.value = false;
-        fullContent.value = "";
-        // 清空当前 assistant message ID
-        currentAssistantMessageId.value = '';
-    }
-    updateAssistantSession(obj);
+    handleAgentChunk(data);
 })
 // 处理 Agent 流式数据 (Cursor-style UI)
 const handleAgentChunk = (data) => {
@@ -698,7 +578,7 @@ const handleAgentChunk = (data) => {
             request_id: data.id,
             role: 'assistant',
             content: '',
-            isAgentMode: true,
+            isAgentMode: false,
             // Event stream: ordered list of all agent events (thinking, tool calls, etc)
             agentEventStream: [],
             // Map to track event by event_id for quick lookup
@@ -711,8 +591,11 @@ const handleAgentChunk = (data) => {
         // Don't return - continue to process the current event data
         message = newMsg;
     }
-    
-    message.isAgentMode = true;
+
+    const agentOnlyTypes = ['thinking', 'tool_call', 'tool_result', 'reflection'];
+    if (agentOnlyTypes.includes(data.response_type)) {
+        message.isAgentMode = true;
+    }
     
     // 确保在继续流式传输时（刷新页面场景），一旦接收到实际内容就关闭 loading
     // 这是一个保护措施，防止任何边缘情况导致 loading 残留
@@ -929,11 +812,24 @@ const handleAgentChunk = (data) => {
                 current_message_content_length: message.content?.length || 0
             });
             
-            // 只有当有实际内容时才追加，避免空内容覆盖
+            // 累积内容并解析 <redacted_thinking>
             if (data.content) {
-                message.content = (message.content || '') + data.content;
                 fullContent.value += data.content;
-                console.log('[Answer] Content appended, new length:', message.content.length);
+                if (fullContent.value.includes('<redacted_thinking>') && !fullContent.value.includes('<\/redacted_thinking>')) {
+                    message.thinking = true;
+                    message.showThink = true;
+                    message.content = '';
+                    message.thinkContent = fullContent.value.replace('<redacted_thinking>', '').trim();
+                } else if (fullContent.value.includes('<redacted_thinking>') && fullContent.value.includes('<\/redacted_thinking>')) {
+                    message.thinking = false;
+                    message.showThink = true;
+                    const index = fullContent.value.lastIndexOf('<\/redacted_thinking>');
+                    message.thinkContent = fullContent.value.substring(0, index).replace('<redacted_thinking>', '').trim();
+                    message.content = fullContent.value.substring(index + '</redacted_thinking>'.length).trim();
+                } else {
+                    message.content = fullContent.value;
+                }
+                console.log('[Answer] Content appended, new length:', message.content?.length || 0);
             }
             
             // Add or update answer event in agentEventStream
@@ -1000,17 +896,19 @@ const handleAgentChunk = (data) => {
             // 停止事件 - 添加到事件流并标记对话完成
             console.log('[Agent] Stop event received');
             if (!message.agentEventStream) message.agentEventStream = [];
-            
+
             // Add stop event to stream
             message.agentEventStream.push({
                 type: 'stop',
                 timestamp: Date.now(),
                 reason: data.data?.reason || 'user_requested'
             });
-            
+
             // Mark conversation as stopped
+            loading.value = false;
             isReplying.value = false;
             fullContent.value = '';
+            currentAssistantMessageId.value = '';
             break;
     }
     

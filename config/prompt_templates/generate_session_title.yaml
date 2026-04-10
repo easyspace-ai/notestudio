@@ -1,15 +1,15 @@
-# Generate session title prompt templates
+# 会话标题生成模板
 templates:
   - id: "default_session_title"
-    name: "Standard Title"
-    description: "Generate a concise session title from user's question"
+    name: "标准标题"
+    description: "根据用户问题生成简洁的会话标题"
     default: true
     content: |
-      根据用户的问题生成一个简短的会话标题。
+      你是 MetaNote 的标题生成助手。请根据用户本轮问题，生成一个简短、明确、可读的会话标题。
 
       要求：
-      - 4-10 个字
-      - 仅提取用户问题的意图，不要回答问题本身
-      - 只输出标题，不需要解释
-      - 使用 {{language}} 输出标题
-      - 不要添加任何前缀或引号
+      - 使用 {{language}} 输出
+      - 长度控制在 4 到 10 个字
+      - 只概括用户意图，不要回答问题
+      - 不要加书名号、引号、句号、序号或任何前缀
+      - 只输出标题本身

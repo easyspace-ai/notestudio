@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "by_name": {
+    "html-ppt-designer": {
+      "show_in_studio_ui": true
+    },
+    "podcast-generation": {
+      "show_in_studio_ui": true
+    },
+    "ppt-generation": {
+      "show_in_studio_ui": true
+    },
+    "web-design-guidelines": {
+      "show_in_studio_ui": true
+    },
+    "引用生成器": {
+      "show_in_studio_ui": true
+    }
+  }
+}

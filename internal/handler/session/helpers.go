@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/output"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -193,9 +194,10 @@ func (h *Handler) setupStreamHandler(
 	assistantMessage *types.Message,
 	eventBus *event.EventBus,
 ) *AgentStreamHandler {
+	outputAdapter := output.NewStreamManagerAdapter(h.streamManager)
 	streamHandler := NewAgentStreamHandler(
 		ctx, sessionID, assistantMessageID, requestID,
-		assistantMessage, h.streamManager, eventBus,
+		assistantMessage, outputAdapter, eventBus,
 	)
 	streamHandler.Subscribe()
 	return streamHandler

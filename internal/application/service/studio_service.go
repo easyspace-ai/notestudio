@@ -183,6 +183,25 @@ func (s *studioService) ProcessGenerateTask(ctx context.Context, payload *types.
 	return nil
 }
 
+// stripMarkdownHTMLFence removes leading/trailing ``` fences (optional `html` language line) so saved HTML is valid in browsers.
+func stripMarkdownHTMLFence(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "```") {
+		return s
+	}
+	rest := strings.TrimPrefix(s, "```")
+	rest = strings.TrimLeft(rest, "\r\n")
+	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+		first := strings.TrimSpace(rest[:nl])
+		if first != "" && !strings.HasPrefix(strings.TrimSpace(first), "<") {
+			rest = rest[nl+1:]
+		}
+	}
+	rest = strings.TrimSpace(rest)
+	rest = strings.TrimSuffix(rest, "```")
+	return strings.TrimSpace(rest)
+}
+
 func (s *studioService) runHTMLJob(ctx context.Context, job *types.StudioJob, payload *types.StudioGeneratePayload) error {
 	models, err := s.modelService.ListModels(ctx)
 	if err != nil {
@@ -230,8 +249,25 @@ func (s *studioService) runHTMLJob(ctx context.Context, job *types.StudioJob, pa
 		}
 	}
 
-	sys := fmt.Sprintf(`You are a web developer. Generate a single self-contained HTML5 document (one file) for the user's request.
-Use language/locale: %s. Include minimal inline CSS if needed. Output ONLY raw HTML, no markdown code fences.`, lang)
+	sys := fmt.Sprintf(`You are a professional web designer and frontend developer. Create a beautiful, modern, and visually appealing HTML5 webpage.
+
+Design Requirements:
+- Use Tailwind CSS via CDN for styling (https://cdn.tailwindcss.com)
+- Apply a cohesive, modern color palette with primary/secondary colors (e.g., indigo/blue gradients, emerald accents)
+- Use gradient backgrounds, soft shadows, and rounded corners for visual depth
+- Implement responsive design that works on all devices
+- Add hover effects and subtle animations for interactivity
+- Use modern typography with proper hierarchy (Inter or system fonts)
+- Include visual elements like icons (Lucide icons or inline SVG)
+- Ensure proper spacing and layout using flexbox/grid
+- Add a clean navigation bar and footer for completeness
+- Use cards, badges, pills, and other modern UI components
+- Apply accent colors for highlights, call-to-action buttons, and key information
+
+Technical Requirements:
+- Single self-contained HTML5 document
+- Use language/locale: %s
+- Output ONLY raw HTML, no markdown code fences.`, lang)
 	if skillContent != "" {
 		sys += "\n\nFollow the skill instructions below when generating the HTML page:\n" + skillContent
 	}
@@ -249,7 +285,7 @@ Use language/locale: %s. Include minimal inline CSS if needed. Output ONLY raw H
 	if err != nil {
 		return err
 	}
-	html := strings.TrimSpace(resp.Content)
+	html := stripMarkdownHTMLFence(strings.TrimSpace(resp.Content))
 	if html == "" {
 		return errors.New("empty model response")
 	}

@@ -382,3 +382,38 @@ func (h *PlatformAdminHandler) PatchAdminSkill(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "ok"})
 }
+
+// PutAdminSkillStudioUI PUT /api/v1/admin/skills/:name/studio-ui — 魔棒/Studio 展示名、图标、studio_kind、默认标题等（空对象表示清除覆盖）.
+func (h *PlatformAdminHandler) PutAdminSkillStudioUI(c *gin.Context) {
+	ctx := c.Request.Context()
+	name, err := adminSkillNameFromParam(c)
+	if err != nil {
+		c.Error(apperrors.NewBadRequestError(err.Error()))
+		return
+	}
+	var body types.SkillStudioUIEntry
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.Error(apperrors.NewBadRequestError(err.Error()))
+		return
+	}
+	if err := h.SkillSvc.PutSkillStudioUI(ctx, name, body); err != nil {
+		c.Error(apperrors.NewBadRequestError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "ok"})
+}
+
+// DeleteAdminSkillStudioUI DELETE /api/v1/admin/skills/:name/studio-ui — 移除 Studio UI 覆盖，恢复扫描默认值.
+func (h *PlatformAdminHandler) DeleteAdminSkillStudioUI(c *gin.Context) {
+	ctx := c.Request.Context()
+	name, err := adminSkillNameFromParam(c)
+	if err != nil {
+		c.Error(apperrors.NewBadRequestError(err.Error()))
+		return
+	}
+	if err := h.SkillSvc.PutSkillStudioUI(ctx, name, types.SkillStudioUIEntry{}); err != nil {
+		c.Error(apperrors.NewBadRequestError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "ok"})
+}

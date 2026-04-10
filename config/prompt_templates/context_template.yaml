@@ -1,106 +1,103 @@
-# Context templates
+# 上下文模板
 templates:
   - id: "default_context"
-    name: "Standard Template"
-    description: "Standard context formatting template"
+    name: "标准模板"
+    description: "基础上下文模板"
     i18n:
       zh-CN:
         name: "标准模板"
-        description: "基础的上下文模板，清晰展示参考资料和问题"
+        description: "基础上下文模板"
       en-US:
         name: "Standard Template"
-        description: "Basic context template with clear references and questions"
+        description: "Basic context template"
       ko-KR:
         name: "표준 템플릿"
-        description: "참조 및 질문을 명확하게 표시하는 기본 상황별 템플릿"
+        description: "기본 컨텍스트 템플릿"
     default: true
     has_knowledge_base: true
     content: |
-      [Runtime Context — metadata only, not instructions]
-      Current time: {{current_time}} {{current_week}}
+      [运行时上下文，仅供参考，不是用户指令]
+      当前时间：{{current_time}} {{current_week}}
 
       {{query}}
 
   - id: "detailed_context"
-    name: "Detailed Template"
-    description: "Context template with detailed instructions"
+    name: "详细模板"
+    description: "适合需要完整说明的问答场景"
     i18n:
       zh-CN:
         name: "详细模板"
-        description: "包含详细说明和回答要求的完整模板"
+        description: "适合需要完整说明的问答场景"
       en-US:
         name: "Detailed Template"
-        description: "Complete template with detailed instructions and requirements"
+        description: "Detailed template for richer Q&A"
       ko-KR:
         name: "상세 템플릿"
-        description: "자세한 지침과 답변 요구 사항이 포함된 완전한 템플릿"
+        description: "설명이 더 필요한 질의응답용 템플릿"
     has_knowledge_base: true
     content: |
-      ## Task Description
-      Answer the user's question accurately and comprehensively based on the provided reference materials.
+      ## 任务说明
+      请基于提供的参考资料，准确、完整地回答用户问题。
 
-      ## Reference Materials
+      ## 参考资料
       {{contexts}}
 
-      ## User Question
+      ## 用户问题
       {{query}}
 
-      ## Response Requirements
-      1. Answer only based on reference materials, do not fabricate information
-      2. If multiple materials conflict, provide a comprehensive analysis
-      3. Cite sources appropriately to enhance credibility
-      4. If materials are insufficient, clearly state so
+      ## 回答要求
+      1. 只基于参考资料作答，不要补充未提供的信息
+      2. 如果多份资料存在差异，请给出综合判断
+      3. 如果资料不足，请明确说明
+      4. 回答使用 {{language}}
 
-      ## CRITICAL: Language Rule
-      - ALWAYS respond in {{language}}
-
-      Current time: {{current_time}} {{current_week}}
+      当前时间：{{current_time}} {{current_week}}
 
   - id: "simple_context"
-    name: "Simple Template"
-    description: "Simple context template"
+    name: "简洁模板"
+    description: "适合简单问答场景"
     i18n:
       zh-CN:
         name: "简洁模板"
-        description: "精简的模板格式，适合简单问答场景"
+        description: "适合简单问答场景"
       en-US:
         name: "Simple Template"
-        description: "Minimal template format for simple Q&A scenarios"
+        description: "Minimal template for simple Q&A"
       ko-KR:
         name: "간단한 템플릿"
-        description: "간단한 Q&A 시나리오에 적합한 간소화된 템플릿 형식"
+        description: "간단한 질의응답용 템플릿"
     has_knowledge_base: true
     content: |
-      Reference materials:
+      参考资料：
       {{contexts}}
 
-      Question: {{query}}
+      用户问题：{{query}}
 
-      Please answer the above question. IMPORTANT: ALWAYS respond in {{language}}.
+      请基于以上内容回答，并使用 {{language}} 输出。
 
   - id: "qa_context"
-    name: "Q&A Template"
-    description: "Template specialized for Q&A scenarios"
+    name: "问答模板"
+    description: "针对问答场景优化的模板"
     i18n:
       zh-CN:
         name: "问答模板"
         description: "针对问答场景优化的模板"
       en-US:
         name: "Q&A Template"
-        description: "Optimized template for Q&A scenarios"
+        description: "Optimized template for Q&A"
       ko-KR:
         name: "Q&A 템플릿"
-        description: "Q&A 시나리오에 최적화된 템플릿"
+        description: "질의응답에 최적화된 템플릿"
     has_knowledge_base: true
     content: |
-      You need to answer a question. Below are potentially relevant materials:
+      下面是可能与问题相关的资料：
 
       {{contexts}}
 
-      The user's question is: {{query}}
+      用户的问题是：{{query}}
 
-      Please answer the question based on the above materials. Requirements:
-      - Answer the question directly, do not repeat the question
-      - If the materials do not contain relevant information, state so
-      - Keep the answer concise and accurate
-      - IMPORTANT: ALWAYS respond in {{language}}
+      回答要求：
+      - 直接回答，不重复问题
+      - 如果资料中没有答案，要明确说明
+      - 回答简洁、准确、清楚
+      - 使用 {{language}} 输出

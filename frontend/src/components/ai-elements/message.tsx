@@ -16,6 +16,7 @@ import {
   PaperclipIcon,
   XIcon,
 } from "lucide-react";
+import { mergeWithWeKnoraUrlTransform } from "@/core/streamdown/plugins";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
@@ -305,12 +306,13 @@ export const MessageBranchPage = ({
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
+  ({ className, urlTransform, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className,
       )}
+      urlTransform={mergeWithWeKnoraUrlTransform(urlTransform)}
       {...props}
     />
   ),

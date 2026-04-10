@@ -58,14 +58,15 @@ onMounted(async () => {
 
 <style scoped lang="less">
 .platform-tenant-bar {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  border-radius: 8px;
-  border: 1px solid var(--td-component-border);
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--td-component-border);
   background: var(--td-bg-color-secondarycontainer);
 }
 

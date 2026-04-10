@@ -152,19 +152,13 @@ func (e *AgentEngine) handleMaxIterations(
 func (e *AgentEngine) emitCompletionEvent(
 	ctx context.Context, state *types.AgentState, sessionID, messageID string, startTime time.Time,
 ) {
-	// Convert knowledge refs to interface{} slice for event data
-	knowledgeRefsInterface := make([]interface{}, 0, len(state.KnowledgeRefs))
-	for _, ref := range state.KnowledgeRefs {
-		knowledgeRefsInterface = append(knowledgeRefsInterface, ref)
-	}
-
 	e.eventBus.Emit(ctx, event.Event{
 		ID:        generateEventID("complete"),
 		Type:      event.EventAgentComplete,
 		SessionID: sessionID,
 		Data: event.AgentCompleteData{
 			FinalAnswer:     state.FinalAnswer,
-			KnowledgeRefs:   knowledgeRefsInterface,
+			KnowledgeRefs:   state.KnowledgeRefs,
 			AgentSteps:      state.RoundSteps, // Include detailed execution steps for message storage
 			TotalSteps:      len(state.RoundSteps),
 			TotalDurationMs: time.Since(startTime).Milliseconds(),

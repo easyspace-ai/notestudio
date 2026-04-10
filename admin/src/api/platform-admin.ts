@@ -2,6 +2,7 @@
  * SaaS 平台管理员 API（与终端用户 JWT 独立，使用 platform admin token）。
  */
 import { del, get, patch, post, put } from '@/utils/request'
+import { getApiErrorMessage } from '@/utils/apiError'
 import type { ModelConfig } from '@/api/model'
 
 export async function platformAdminLogin(email: string, password: string): Promise<{
@@ -84,11 +85,22 @@ export interface AdminSessionRow {
 }
 
 /** Platform-managed skills (preloaded + skills/pubic), for admin console. */
+/** 魔棒 / Studio 侧栏展示覆盖（存 data/skill_studio_overrides.json） */
+export interface SkillStudioUIEntry {
+  display_label?: string
+  default_title?: string
+  icon?: string
+  studio_kind?: string
+  /** false 时从 Studio 快捷清单中隐藏 */
+  show_in_studio_ui?: boolean
+}
+
 export interface SkillAdminRow {
   name: string
   description: string
   source: string
   enabled: boolean
+  studio_ui?: SkillStudioUIEntry
 }
 
 export interface SkillAdminDetail extends SkillAdminRow {
@@ -126,6 +138,30 @@ export async function patchAdminSkillEnabled(name: string, enabled: boolean): Pr
   const res = (await patch(`/api/v1/admin/skills/${enc}`, { enabled })) as { success?: boolean }
   if (!res?.success) {
     throw new Error('更新开关失败')
+  }
+}
+
+export async function putAdminSkillStudioUI(name: string, body: SkillStudioUIEntry): Promise<void> {
+  const enc = encodeURIComponent(name)
+  try {
+    const res = (await put(`/api/v1/admin/skills/${enc}/studio-ui`, body)) as { success?: boolean }
+    if (!res?.success) {
+      throw new Error('保存 Studio 展示配置失败')
+    }
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e, '保存 Studio 展示配置失败'))
+  }
+}
+
+export async function deleteAdminSkillStudioUI(name: string): Promise<void> {
+  const enc = encodeURIComponent(name)
+  try {
+    const res = (await del(`/api/v1/admin/skills/${enc}/studio-ui`)) as { success?: boolean }
+    if (!res?.success) {
+      throw new Error('清除 Studio 展示配置失败')
+    }
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e, '清除 Studio 展示配置失败'))
   }
 }
 

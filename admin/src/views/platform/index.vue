@@ -1,9 +1,16 @@
 <template>
     <div class="main" ref="dropzone">
         <AdminMenu v-if="isPlatformConsole()" />
-        <PlatformManageTenantBar v-if="isPlatformConsole()" />
-        <Menu v-else />
-        <RouterView />
+        <div v-if="isPlatformConsole()" class="platform-main">
+            <PlatformManageTenantBar />
+            <div class="platform-router">
+                <RouterView />
+            </div>
+        </div>
+        <template v-else>
+            <Menu />
+            <RouterView />
+        </template>
         <div v-if="!isPlatformConsole()" class="upload-mask" v-show="ismask">
             <input type="file" style="display: none" ref="uploadInput" accept=".pdf,.docx,.doc,.pptx,.ppt,.txt,.md,.jpg,.jpeg,.png,.csv,.xls,.xlsx" />
             <UploadMask></UploadMask>
@@ -144,6 +151,25 @@ onUnmounted(() => {
     min-width: 600px;
     /* 统一整页背景，让左侧菜单与右侧内容区视觉连贯 */
     background: var(--td-bg-color-container);
+}
+
+/* 平台端：左侧菜单 + 右侧单列（顶部租户栏 + 下方页面），避免租户栏独占一列 */
+.platform-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.platform-router {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
 }
 
 .upload-mask {

@@ -1,0 +1,1 @@
+import{g as a,p as s,a as n}from"./index-CxTEZoej.js";function i(){return a("/api/v1/tenants/kv/chat-history-config")}function r(t){return s("/api/v1/tenants/kv/chat-history-config",t)}function o(){return a("/api/v1/messages/chat-history-stats")}function g(t){return n("/api/v1/messages/search",t)}export{o as a,i as g,g as s,r as u};

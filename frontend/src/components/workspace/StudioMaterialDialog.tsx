@@ -114,7 +114,7 @@ function StudioMarkdownWithSourceToggle(props: {
 
 function StudioAudioMaterialBody(props: {
   projectId?: string | null;
-  materialId: number;
+  materialId: number | string;
   payload: Record<string, unknown>;
   contentLayout?: StudioMaterialContentLayout;
 }) {
@@ -226,7 +226,7 @@ function StudioAudioMaterialBody(props: {
 
 function StudioExportPreview(props: {
   projectId: string;
-  materialId: number;
+  materialId: number | string;
   downloadLabel: string;
   downloadName: string;
   markdownFallback?: string;
@@ -486,7 +486,7 @@ export function StudioMaterialPreviewPane({
         <div className="min-h-0 flex-1">
           <MaterialBody
             projectId={projectId}
-            materialId={material.id as number}
+            materialId={material.id}
             kind={material.kind}
             payload={p}
             contentLayout={contentLayout}
@@ -558,7 +558,7 @@ export function StudioMaterialExpandedOverlay({
 
 function MaterialBody(props: {
   projectId?: string | null;
-  materialId: number;
+  materialId: number | string;
   kind: string;
   payload: Record<string, unknown>;
   contentLayout?: StudioMaterialContentLayout;
@@ -690,13 +690,41 @@ function MaterialBody(props: {
       const src = str(payload, "iframeUrl") ?? str(payload, "url");
       const srcDocInline = str(payload, "srcDoc");
       if (src) {
+        const httpSrc = /^https?:\/\//i.test(src);
+        const dlName =
+          str(payload, "file_name") ??
+          (() => {
+            try {
+              const u = new URL(src);
+              const seg = u.pathname.split("/").filter(Boolean).pop();
+              return seg && /\.[a-z0-9]+$/i.test(seg) ? seg : "download.html";
+            } catch {
+              return "download.html";
+            }
+          })();
         return (
-          <iframe
-            title="HTML preview"
-            className={iframeHtml}
-            src={src}
-            sandbox={studioHtmlIframeSandbox}
-          />
+          <div className="space-y-3">
+            {httpSrc ? (
+              <div className="space-y-2">
+                <a
+                  href={src}
+                  download={dlName}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-sm font-semibold text-on-surface hover:bg-surface-container-high"
+                >
+                  <Download className="h-4 w-4" />
+                  下载 HTML
+                </a>
+              </div>
+            ) : null}
+            <iframe
+              title="HTML preview"
+              className={iframeHtml}
+              src={src}
+              sandbox={studioHtmlIframeSandbox}
+            />
+          </div>
         );
       }
       if (srcDocInline) {

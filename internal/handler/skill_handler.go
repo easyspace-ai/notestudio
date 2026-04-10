@@ -3,7 +3,9 @@ package handler
 import (
 	"net/http"
 	"os"
+	"strings"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -12,13 +14,15 @@ import (
 
 // SkillHandler handles skill-related HTTP requests
 type SkillHandler struct {
-	skillService interfaces.SkillService
+	skillService       interfaces.SkillService
+	customAgentService interfaces.CustomAgentService
 }
 
 // NewSkillHandler creates a new skill handler
-func NewSkillHandler(skillService interfaces.SkillService) *SkillHandler {
+func NewSkillHandler(skillService interfaces.SkillService, customAgentService interfaces.CustomAgentService) *SkillHandler {
 	return &SkillHandler{
-		skillService: skillService,
+		skillService:       skillService,
+		customAgentService: customAgentService,
 	}
 }
 
@@ -68,5 +72,30 @@ func (h *SkillHandler) ListSkills(c *gin.Context) {
 		"success":          true,
 		"data":             response,
 		"skills_available": skillsAvailable,
+	})
+}
+
+// GetStudioQuickSkills GET /api/v1/skills/studio-quick?agent_id= — Studio 快捷技能清单；若带 agent_id 则按该智能体后台 Skills 配置过滤。
+func (h *SkillHandler) GetStudioQuickSkills(c *gin.Context) {
+	ctx := c.Request.Context()
+	m, err := h.skillService.GetStudioQuickSkillsManifest(ctx)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewInternalServerError("Failed to load studio quick skills: " + err.Error()))
+		return
+	}
+	agentID := strings.TrimSpace(c.Query("agent_id"))
+	if agentID != "" {
+		agent, err := h.customAgentService.GetAgentByID(ctx, agentID)
+		if err != nil {
+			logger.Warnf(ctx, "studio-quick: get agent %s: %v", agentID, err)
+			c.Error(errors.NewNotFoundError("Agent not found"))
+			return
+		}
+		m = service.FilterStudioQuickManifestForAgent(ctx, m, agent, h.skillService)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    m,
 	})
 }

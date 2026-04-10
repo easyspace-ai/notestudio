@@ -1,8 +1,11 @@
 import { apiOrigin, mergeAuthHeaders } from "@/api/http";
 
 /** GET authenticated HTML export (same URL as download; use for iframe srcDoc preview). */
-export async function fetchStudioFileText(projectId: string, materialId: number): Promise<string> {
-  const url = `${apiOrigin()}/api/v1/projects/${projectId}/materials/${materialId}/studio-file`;
+export async function fetchStudioFileText(
+  projectId: string,
+  materialId: number | string,
+): Promise<string> {
+  const url = `${apiOrigin()}/api/v1/projects/${projectId}/materials/${encodeURIComponent(String(materialId))}/studio-file`;
   const res = await fetch(url, { headers: mergeAuthHeaders() });
   if (!res.ok) {
     const text = await res.text();
@@ -12,8 +15,11 @@ export async function fetchStudioFileText(projectId: string, materialId: number)
 }
 
 /** GET authenticated studio export as Blob (HTML, audio, etc.). */
-export async function fetchStudioFileBlob(projectId: string, materialId: number): Promise<Blob> {
-  const url = `${apiOrigin()}/api/v1/projects/${projectId}/materials/${materialId}/studio-file`;
+export async function fetchStudioFileBlob(
+  projectId: string,
+  materialId: number | string,
+): Promise<Blob> {
+  const url = `${apiOrigin()}/api/v1/projects/${projectId}/materials/${encodeURIComponent(String(materialId))}/studio-file`;
   const res = await fetch(url, { headers: mergeAuthHeaders() });
   if (!res.ok) {
     const text = await res.text();
@@ -25,10 +31,10 @@ export async function fetchStudioFileBlob(projectId: string, materialId: number)
 /** GET authenticated studio file blob and trigger browser download. */
 export async function downloadProjectStudioFile(
   projectId: string,
-  materialId: number,
+  materialId: number | string,
   filename: string,
 ): Promise<void> {
-  const url = `${apiOrigin()}/api/v1/projects/${projectId}/materials/${materialId}/studio-file`;
+  const url = `${apiOrigin()}/api/v1/projects/${projectId}/materials/${encodeURIComponent(String(materialId))}/studio-file`;
   const res = await fetch(url, { headers: mergeAuthHeaders() });
   if (!res.ok) {
     const text = await res.text();

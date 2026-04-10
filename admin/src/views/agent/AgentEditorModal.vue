@@ -1703,8 +1703,9 @@ const initSkillsSelectionMode = () => {
     // 如果有保存的模式，直接使用
     skillsSelectionMode.value = formData.value.config.skills_selection_mode;
   } else if (formData.value.config.selected_skills?.length > 0) {
-    // 有指定 Skills
+    // 有指定 Skills（兼容旧数据：未写入 skills_selection_mode 时仍视为 selected，保存时会落库）
     skillsSelectionMode.value = 'selected';
+    formData.value.config.skills_selection_mode = 'selected';
   } else {
     skillsSelectionMode.value = 'none';
   }

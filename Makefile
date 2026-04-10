@@ -1,11 +1,14 @@
-.PHONY: help build run test test-config clean docker-build-app docker-build-docreader docker-build-frontend docker-build-all docker-run migrate-up migrate-down docker-restart docker-stop start-all stop-all start-ollama stop-ollama build-images build-images-app build-images-docreader build-images-frontend clean-images check-env list-containers pull-images show-platform dev-start dev-stop dev-restart dev-logs dev-status dev-app dev-frontend docs install-swagger
+.PHONY: help build run test test-config clean docker-build-app docker-build-docreader docker-build-frontend docker-build-all docker-run migrate-up migrate-down docker-restart docker-stop start-all stop-all start-ollama stop-ollama build-images build-images-app build-images-docreader build-images-frontend clean-images check-env list-containers pull-images show-platform dev-start dev-stop dev-restart dev-logs dev-status dev-app dev-frontend docs install-swagger build-web build-admin-web build-bin
 
 # Show help
 help:
 	@echo "WeKnora Makefile 帮助"
 	@echo ""
 	@echo "基础命令:"
-	@echo "  build             构建应用"
+	@echo "  build             构建应用（二进制输出到当前目录 $(BINARY_NAME)）"
+	@echo "  build-web         构建主站 React → bin/frontend/"
+	@echo "  build-admin-web   构建管理端 Vue → bin/admin/（base=/admin/）"
+	@echo "  build-bin         构建前后端到 bin/（WeKnora + frontend + admin）"
 	@echo "  run               运行应用"
 	@echo "  test              运行全部 Go 测试（可能含历史失败用例）"
 	@echo "  test-config       仅跑 internal/config（平台存储回归，推荐日常）"
@@ -77,9 +80,32 @@ else
     PLATFORM=linux/amd64
 endif
 
+# Clang（macOS）编译 go-m1cpu 等 CGO 依赖时会出现 -Wgnu-folding-constant；GCC 不认该选项故仅 Darwin 追加
+CGO_OPT_CFLAGS := -Wno-deprecated-declarations
+ifeq ($(shell uname -s),Darwin)
+CGO_OPT_CFLAGS += -Wno-gnu-folding-constant
+endif
+
+# Milvus 与 Qdrant 的 gRPC 生成代码均注册同名 common.proto，默认会 panic（见 protobuf FAQ）
+PROTO_CONFLICT_LDFLAG := -X google.golang.org/protobuf/reflect/protoregistry.conflictPolicy=warn
+
+# 主站前端（Vite outDir 已为 ../bin/frontend）
+build-web:
+	cd frontend && pnpm install && pnpm run build
+
+# 管理端（挂到服务端 /admin；与后端同域时走相对 /api）
+build-admin-web:
+	cd admin && npm install && VITE_IS_DOCKER=true npm run build
+
+# 二进制 + 静态资源，便于单机部署：WEKNORA_SERVE_WEB=1 或存在 bin/frontend/index.html 时由 Go 托管 / 与 /admin
+build-bin: build-web build-admin-web
+	mkdir -p bin
+	CGO_ENABLED=1 CGO_CFLAGS="$(CGO_OPT_CFLAGS)" CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" \
+		go build -ldflags="$(PROTO_CONFLICT_LDFLAG)" -o bin/$(BINARY_NAME) $(MAIN_PATH)
+
 # Build the application
 build:
-	go build -o $(BINARY_NAME) $(MAIN_PATH)
+	go build -ldflags="$(PROTO_CONFLICT_LDFLAG)" -o $(BINARY_NAME) $(MAIN_PATH)
 
 # Run the application
 run: build
@@ -229,7 +255,7 @@ build-prod:
 	VERSION=$$(git describe --tags --abbrev=0 2>/dev/null || echo "$${VERSION:-unknown}"); \
 	COMMIT_ID=$${COMMIT_ID:-unknown}; \
 	CGO_ENABLED=1 \
-	CGO_CFLAGS="-Wno-deprecated-declarations" \
+	CGO_CFLAGS="$(CGO_OPT_CFLAGS)" \
 	CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" \
 	BUILD_TIME=$${BUILD_TIME:-unknown}; \
 	GO_VERSION=$${GO_VERSION:-unknown}; \

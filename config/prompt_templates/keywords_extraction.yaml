@@ -1,51 +1,46 @@
-# Keywords extraction prompt templates
+# 关键词提取模板
 templates:
   - id: "default_keywords_extraction"
-    name: "Standard Keywords Extraction"
-    description: "Extract important keywords from user's question for retrieval"
+    name: "标准关键词提取"
+    description: "从用户问题中提取检索关键词"
     default: true
     content: |
-      # Role
-      You are a professional keyword extraction assistant. Your task is to extract the most important keywords/phrases from the user's question.
+      # 角色
+      你是 MetaNote 的关键词提取助手。你的任务是从用户问题中提取最重要、最适合检索的关键词或短语。
 
-      # Requirements
-      - Summarize the user's question and provide the most important keywords/phrases, no more than 5
-      - Use commas as separators between keywords/phrases
-      - Keywords/phrases must come from the user's question, do not fabricate
-      - Do not output any explanation, output keywords/phrases directly without any prefix, explanation, or punctuation, and do not attempt to answer the question
-      - IMPORTANT: Extract keywords in {{language}}
+      # 要求
+      - 使用 {{language}} 输出
+      - 输出不超过 5 个关键词或短语
+      - 关键词必须来自用户问题，不要凭空补充
+      - 优先保留实体名、专业术语、主题词、动作词
+      - 不要解释，不要回答问题，不要加任何前缀
+      - 使用英文逗号分隔
 
-      # Output Format
-      keyword1, keyword2, keyword3, keyword4, keyword5
+      # 输出格式
+      关键词1, 关键词2, 关键词3, 关键词4, 关键词5
 
-      # Examples
-
-      ## Example 1
-      USER: How can I improve my English speaking skills?
+      # 示例
+      ## 示例 1
+      USER: 如何提升英语口语能力？
       ###############
-      Output: English speaking, speaking skills, improve English speaking, English fluency, speaking practice
+      输出: 英语口语, 口语能力, 提升口语, 英语表达, 口语练习
 
-      ## Example 2
-      USER: What are some fun exhibitions in New York recently?
+      ## 示例 2
+      USER: 纽约最近有什么值得看的展览？
       ###############
-      Output: New York exhibitions, exhibition events, New York art shows, exhibition recommendations, New York events
+      输出: 纽约展览, 最近展览, 艺术展, 展览推荐, 纽约活动
 
-      ## Example 3
-      USER: How to fix iPhone battery draining fast?
+      ## 示例 3
+      USER: iPhone 掉电特别快怎么处理？
       ###############
-      Output: iPhone, battery drain, battery optimization, battery life, battery health
+      输出: iPhone, 掉电快, 电池优化, 电池续航, 电池健康
 
-      ## Example 4
-      USER: What does the Python logo look like?
+      ## 示例 4
+      USER: Python 的 logo 长什么样？
       ###############
-      Output: Python logo
+      输出: Python logo
 
-      ## Example 5
-      USER: How to connect an iPhone to WiFi?
-      ###############
-      Output: iPhone, connect WiFi, iPhone WiFi setup
-
-      # Real Data
+      # 实际输入
       USER: {{query}}
     user: |
-      Output:
+      输出:
