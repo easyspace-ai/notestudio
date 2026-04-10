@@ -5,7 +5,7 @@ help:
 	@echo "WeKnora Makefile 帮助"
 	@echo ""
 	@echo "基础命令:"
-	@echo "  build             构建应用（二进制输出到当前目录 $(BINARY_NAME)）"
+	@echo "  build             构建应用（二进制输出到 bin/$(BINARY_NAME)，与 build-bin 路径一致）"
 	@echo "  build-web         构建主站 React → bin/frontend/"
 	@echo "  build-admin-web   构建管理端 Vue → bin/admin/（base=/admin/）"
 	@echo "  build-bin         构建前后端到 bin/（WeKnora + frontend + admin）"
@@ -62,7 +62,7 @@ help:
 	@echo "  dev-frontend      启动前端（本地运行，需先运行 dev-start）"
 
 # Go related variables
-BINARY_NAME=WeKnora
+BINARY_NAME=metanote
 MAIN_PATH=./cmd/server
 
 # Docker related variables
@@ -103,13 +103,14 @@ build-bin: build-web build-admin-web
 	CGO_ENABLED=1 CGO_CFLAGS="$(CGO_OPT_CFLAGS)" CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" \
 		go build -ldflags="$(PROTO_CONFLICT_LDFLAG)" -o bin/$(BINARY_NAME) $(MAIN_PATH)
 
-# Build the application
+# Build the application（输出到 bin/，避免与未带 ldflags 的旧 ./bin/WeKnora 混淆）
 build:
-	go build -ldflags="$(PROTO_CONFLICT_LDFLAG)" -o $(BINARY_NAME) $(MAIN_PATH)
+	mkdir -p bin
+	go build -ldflags="$(PROTO_CONFLICT_LDFLAG)" -o bin/$(BINARY_NAME) $(MAIN_PATH)
 
 # Run the application
 run: build
-	./$(BINARY_NAME)
+	./bin/$(BINARY_NAME)
 
 # Run tests (entire repo; some packages may fail — use test-config for stable CI parity)
 test:
@@ -122,7 +123,7 @@ test-config:
 # Clean build artifacts
 clean:
 	go clean
-	rm -f $(BINARY_NAME)
+	rm -f $(BINARY_NAME) bin/$(BINARY_NAME)
 
 # Build Docker image
 docker-build-app:

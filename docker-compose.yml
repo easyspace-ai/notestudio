@@ -31,26 +31,7 @@
 name: metanote
 
 services:
-  markitdown:
-    # 镜像: 本地开发使用 local tag，生产使用 ACR 镜像 (通过 docker-compose.prod.yml 覆盖)
-    # 构建: 定义在 docker-compose.override.yml (本地开发) 或 acr-push.sh (Mac -> ACR)
-    platform: linux/amd64
-    image: ${MARKITDOWN_IMAGE:-metanote/markitdown-http:${MARKITDOWN_TAG:-local}}
-    container_name: metanote-markitdown
-    ports:
-      - "${MARKITDOWN_PORT:-8788}:8787"
-    environment:
-      - MARKITDOWN_ENABLE_PLUGINS=${MARKITDOWN_ENABLE_PLUGINS:-false}
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/health"]
-      interval: 30s
-      timeout: 15s
-      retries: 3
-      start_period: 90s
-    networks:
-      - metanote-network
-    restart: unless-stopped
-
+   
   # Notex：统一 API + LangGraph；镜像内已构建并包含前端静态资源 (/app/bin/web)
   # notex:
   #   platform: linux/amd64
