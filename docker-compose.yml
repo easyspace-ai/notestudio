@@ -114,35 +114,33 @@ services:
     restart: unless-stopped
 
   docreader:
-    # 镜像: 本地开发使用 local tag，生产使用 ACR 镜像 (通过 docker-compose.prod.yml 覆盖)
-    # 构建: 定义在 docker-compose.override.yml (本地开发) 或 acr-push.sh (Mac -> ACR)
-    platform: linux/amd64
-    image: ${DOCREADER_IMAGE:-metanote/weknora-docreader:${WEKNORA_VERSION:-local}}
+    image: wechatopenai/weknora-docreader:${WEKNORA_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.docreader
+      args:
+        - APT_MIRROR=${APT_MIRROR:-}
     container_name: metanote-docreader
     ports:
       - "${DOCREADER_PORT:-50051}:50051"
     volumes:
       - metanote-docreader-tmp:/tmp/docreader
     environment:
-      DOCREADER_IMAGE_OUTPUT_DIR: /tmp/docreader
-      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
-      MINERU_ENDPOINT: ${MINERU_ENDPOINT:-}
-      # Object storage (same credentials as minio service; internal DNS for uploads from docreader)
-      MINIO_ENDPOINT: minio:9000
-      MINIO_PUBLIC_ENDPOINT: http://127.0.0.1:${MINIO_PORT:-9000}
-      MINIO_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY_ID:-minioadmin}
-      MINIO_SECRET_ACCESS_KEY: ${MINIO_SECRET_ACCESS_KEY:-minioadmin}
+      - DOCREADER_IMAGE_OUTPUT_DIR=/tmp/docreader
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-}
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:50051"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 60s
     networks:
       - metanote-network
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+   
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
