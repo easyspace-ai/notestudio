@@ -1,117 +1,16 @@
-# =============================================================================
-# metanote 基础服务 Docker Compose 配置
-#
-# 架构说明:
-#   - 此文件定义 Postgres, Redis, MinIO, Milvus, markitdown, docreader, notex（API + bin/web 前端）
-#   - 本地开发: docker compose up -d (自动加载 override.yml 进行本地构建)
-#   - 生产部署: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-#
-# 使用方法:
-#   1. cp .env.example .env (本地) 或 cp .env.server.example .env (服务器)
-#   2. 编辑 .env，配置密码和镜像地址
-#   3. make docker (本地) 或 make server-deploy (服务器)
-#
-# Mac 构建 -> 阿里云 ECS:
-#   1. make acr-push-both ACR_VERSION=v1.0.0
-#   2. 在服务器上配置 .env 中的镜像地址
-#   3. make server-deploy
-#
-# 端口映射 (宿主机 -> 容器):
-#   notex:       ${NOTEX_HOST_PORT:-8787}:8787   (API + 托管 bin/web 前端)
-#   markitdown:  ${MARKITDOWN_PORT:-8788}:8787  (HTTP；默认 8788 避免与 notex 宿主机 8787 冲突)
-#   postgres:    ${DB_HOST_PORT:-5432}:5432      (PostgreSQL)
-#   redis:       ${REDIS_HOST_PORT:-6379}:6379   (Redis)
-#   docreader:   ${DOCREADER_PORT:-50051}:50051 (gRPC)
-#   minio:       ${MINIO_PORT:-9000}:9000 + ${MINIO_CONSOLE_PORT:-9001}:9001
-#   milvus:      ${MILVUS_PORT:-19530}:19530 + ${MILVUS_HEALTH_PORT:-9091}:9091
-#
-# 云服务器架构: 固定 linux/amd64 (x86_64)，勿改 DOCKER_PLATFORM
-# =============================================================================
-
-name: metanote
-
 services:
    
-  # Notex：统一 API + LangGraph；镜像内已构建并包含前端静态资源 (/app/bin/web)
-  # notex:
-  #   platform: linux/amd64
-  #   build:
-  #     context: .
-  #     dockerfile: docker/notex/Dockerfile
-  #   image: ${NOTEX_IMAGE:-metanote/notex:local}
-  #   container_name: metanote-notex
-  #   ports:
-  #     - "${NOTEX_HOST_PORT:-8787}:8787"
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     NOTEX_PORT: ":8787"
-  #     NOTEX_DATA_ROOT: /data/notex
-  #     NOTEX_WEB_ROOT: /app/bin/web
-  #     POSTGRES_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-metanote}?sslmode=disable
-  #     MARKITDOWN_URL: http://markitdown:8787
-  #     DOCREADER_ADDR: docreader:50051
-  #     DOCREADER_TRANSPORT: grpc
-  #     REDIS_ADDR: redis:6379
-  #     REDIS_PASSWORD: ${REDIS_PASSWORD:-metanote-redis-local}
-  #     DEERFLOW_CONFIG_PATH: /app/config.yaml
-  #     MILVUS_ADDRESS: milvus:19530
-  #     MILVUS_HTTP_HEALTH: http://milvus:9091/healthz
-  #   volumes:
-  #     - metanote-notex-data:/data/notex
-  #     - ./config.yaml:/app/config.yaml:ro
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     markitdown:
-  #       condition: service_started
-  #     redis:
-  #       condition: service_started
-  #     docreader:
-  #       condition: service_started
-  #   networks:
-  #     - metanote-network
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/health"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 45s
-
-  postgres:
-    image: paradedb/paradedb:v0.22.2-pg17
-    container_name: metanote-postgres
-    ports:
-      - "${DB_HOST_PORT:-5432}:5432"
-    environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-knowhow}
-    volumes:
-      - metanote-postgres-data:/var/lib/postgresql/data
-    networks:
-      - metanote-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
-      interval: 10s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    stop_grace_period: 1m
-    restart: unless-stopped
-
-  redis:
-    image: redis:7.0-alpine
-    container_name: metanote-redis
-    ports:
-      - "${REDIS_HOST_PORT:-6379}:6379"
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-metanote-redis-local}
-    volumes:
-      - metanote-redis-data:/data
-    networks:
-      - metanote-network
-    restart: unless-stopped
+  # Sandbox 镜像：仅用于 build/pull，非常驻服务；app 执行 Skills 时按需 docker run 该镜像，用毕即释
+  sandbox:
+    image: wechatopenai/weknora-sandbox:${WEKNORA_VERSION:-latest}
+    container_name: WeKnora-sandbox
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sandbox
+    profiles:
+      - full
+    command: ["true"]
+    restart: "no"
 
   docreader:
     image: wechatopenai/weknora-docreader:${WEKNORA_VERSION:-latest}
@@ -120,11 +19,11 @@ services:
       dockerfile: docker/Dockerfile.docreader
       args:
         - APT_MIRROR=${APT_MIRROR:-}
-    container_name: metanote-docreader
+    container_name: WeKnora-docreader
     ports:
       - "${DOCREADER_PORT:-50051}:50051"
     volumes:
-      - metanote-docreader-tmp:/tmp/docreader
+      - docreader-tmp:/tmp/docreader
     environment:
       - DOCREADER_IMAGE_OUTPUT_DIR=/tmp/docreader
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-}
@@ -135,129 +34,49 @@ services:
       retries: 3
       start_period: 60s
     networks:
-      - metanote-network
+      - WeKnora-network
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-   
-
-  minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    container_name: metanote-minio
-    ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+  # 修改的PostgreSQL配置
+  postgres:
+    image: paradedb/paradedb:v0.22.2-pg17
+    container_name: WeKnora-postgres
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY_ID:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_ACCESS_KEY:-minioadmin}
-    command: server --console-address ":9001" /data
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
     volumes:
-      - metanote-minio-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+      - postgres-data:/var/lib/postgresql/data
     networks:
-      - metanote-network
+      - WeKnora-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s # 增加时间间隔
+      timeout: 10s # 增加超时时间
+      retries: 3 # 减少重试次数，让失败更快反馈
+      start_period: 30s # 给予初始启动更多时间
     restart: unless-stopped
+    # 添加停机时的优雅退出时间
+    stop_grace_period: 1m
 
-  # milvus:
-  #   image: milvusdb/milvus:v2.6.11
-  #   container_name: metanote-milvus
-  #   security_opt:
-  #     - seccomp:unconfined
-  #   command: ["milvus", "run", "standalone"]
-  #   environment:
-  #     ETCD_USE_EMBED: "true"
-  #     ETCD_DATA_DIR: /var/lib/milvus/etcd
-  #     COMMON_STORAGETYPE: local
-  #     DEPLOY_MODE: STANDALONE
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-fsS", "http://localhost:9091/healthz"]
-  #     interval: 30s
-  #     start_period: 90s
-  #     timeout: 20s
-  #     retries: 3
-  #   ports:
-  #     - "${MILVUS_PORT:-19530}:19530"
-  #     - "${MILVUS_HEALTH_PORT:-9091}:9091"
-  #   volumes:
-  #     - metanote-milvus-data:/var/lib/milvus
-  #   networks:
-  #     - metanote-network
-  #   restart: unless-stopped
-
- # Sandbox 镜像：仅用于 build/pull，非常驻服务；app 执行 Skills 时按需 docker run 该镜像，用毕即释
-  sandbox:
-    image: wechatopenai/weknora-sandbox:${WEKNORA_VERSION:-latest}
-    container_name: metanote-sandbox
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.sandbox
-    profiles:
-      - full
-    command: ["true"]
-    restart: "no"
-
-  neo4j:
-    image: neo4j:2025.10.1
-    container_name: metanote-neo4j
-    volumes:
-      - metanote-neo4j-data:/data
-    environment:
-      - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-password}
-      - NEO4J_apoc_export_file_enabled=true
-      - NEO4J_apoc_import_file_enabled=true
-      - NEO4J_apoc_import_file_use__neo4j__config=true
-      - NEO4JLABS_PLUGINS=["apoc"]
-    ports:
-      - "7474:7474"
-      - "7687:7687"
+  redis:
+    image: redis:7.0-alpine
+    container_name: WeKnora-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     restart: always
     networks:
-      - metanote-network
-    profiles:
-      - neo4j
-      - full
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    container_name: metanote-jaeger-dev
-    ports:
-      - "6831:6831/udp"
-      - "6832:6832/udp"
-      - "5778:5778"
-      - "16686:16686"
-      - "4317:4317"
-      - "4318:4318"
-      - "14250:14250"
-      - "14268:14268"
-      - "9411:9411"
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
-    volumes:
-      - metanote-jaeger-data:/var/lib/jaeger
-    networks:
-      - metanote-network
-    restart: unless-stopped
-    profiles:
-      - jaeger
-      - full
+      - WeKnora-network
 
+   
 
-    
 networks:
-  metanote-network:
+  WeKnora-network:
     driver: bridge
 
 volumes:
-  metanote-postgres-data:
-  metanote-redis-data:
-  metanote-docreader-tmp:
-  metanote-minio-data:
-  metanote-milvus-data:
-  metanote-notex-data:
-  metanote-jaeger-data:
-  metanote-neo4j-data:
+  postgres-data:
+  data-files:
+  docreader-tmp:
+  
