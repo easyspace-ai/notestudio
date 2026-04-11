@@ -89,125 +89,125 @@ services:
       - meta-network
 
   # 后端 API；主站 / 管理端为本地预先 pnpm/npm build 的产物，挂到 /app/bin/frontend、/app/bin/admin（见 Makefile build-bin）
-  app:
-    image: ${APP_IMAGE:-wechatopenai/weknora-app}:${WEKNORA_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.app
-      args:
-        - APK_MIRROR_ARG=${APK_MIRROR_ARG:-}
-    container_name: meta-app
-    ports:
-      - "${APP_PORT:-8080}:8080"
-    volumes:
-      - meta-data-files:/data/files
-      - meta-docreader-tmp:/tmp/docreader:ro
-      - ./config/config.yaml:/app/config/config.yaml
-      - ./skills:/app/skills
-      # bind 长格式：短格式下 `bin/frontend` 会被当成命名卷（须 ./ 或本长格式）
-      - type: bind
-        source: ${WEKNORA_WEB_DIR:-./bin/frontend}
-        target: /app/bin/frontend
-        read_only: true
-      - type: bind
-        source: ${WEKNORA_ADMIN_WEB_DIR:-./bin/admin}
-        target: /app/bin/admin
-        read_only: true
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    environment:
-      - LOG_LEVEL=${LOG_LEVEL:-}
-      - COS_SECRET_ID=${COS_SECRET_ID:-}
-      - COS_SECRET_KEY=${COS_SECRET_KEY:-}
-      - COS_REGION=${COS_REGION:-}
-      - COS_BUCKET_NAME=${COS_BUCKET_NAME:-}
-      - COS_APP_ID=${COS_APP_ID:-}
-      - COS_PATH_PREFIX=${COS_PATH_PREFIX:-}
-      - COS_ENABLE_OLD_DOMAIN=${COS_ENABLE_OLD_DOMAIN:-}
-      - GIN_MODE=${GIN_MODE:-release}
-      - DISABLE_REGISTRATION=${DISABLE_REGISTRATION:-false}
-      - DB_DRIVER=postgres
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=${DB_USER:-}
-      - DB_PASSWORD=${DB_PASSWORD:-}
-      - DB_NAME=${DB_NAME:-}
-      - TZ=${TZ:-Asia/Shanghai}
-      - WEKNORA_LANGUAGE=${WEKNORA_LANGUAGE:-zh-CN}
-      # 由 Go 托管静态资源（与 router 中 WEKNORA_SERVE_WEB / bin/frontend 一致）
-      - WEKNORA_SERVE_WEB=${WEKNORA_SERVE_WEB:-1}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-WeKnora}
-      - OTEL_TRACES_EXPORTER=${OTEL_TRACES_EXPORTER:-none}
-      - OTEL_METRICS_EXPORTER=${OTEL_METRICS_EXPORTER:-none}
-      - OTEL_LOGS_EXPORTER=${OTEL_LOGS_EXPORTER:-none}
-      - OTEL_PROPAGATORS=${OTEL_PROPAGATORS:-tracecontext,baggage}
-      - RETRIEVE_DRIVER=${RETRIEVE_DRIVER:-}
-      - ELASTICSEARCH_ADDR=${ELASTICSEARCH_ADDR:-}
-      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-}
-      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-}
-      - ELASTICSEARCH_INDEX=${ELASTICSEARCH_INDEX:-}
-      - QDRANT_HOST=${QDRANT_HOST:-qdrant}
-      - QDRANT_PORT=${QDRANT_PORT:-6334}
-      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-weknora_embeddings}
-      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
-      - QDRANT_USE_TLS=${QDRANT_USE_TLS:-false}
-      - MILVUS_ADDRESS=${MILVUS_ADDRESS:-milvus:19530}
-      - MILVUS_COLLECTION=${MILVUS_COLLECTION:-weknora_embeddings}
-      - MILVUS_METRIC_TYPE=${MILVUS_METRIC_TYPE:-IP}
-      - DOCREADER_ADDR=${DOCREADER_ADDR:-docreader:50051}
-      - DOCREADER_TRANSPORT=${DOCREADER_TRANSPORT:-grpc}
-      - WEAVIATE_HOST=${WEAVIATE_HOST:-weaviate:8080}
-      - WEAVIATE_GRPC_ADDRESS=${WEAVIATE_GRPC_ADDRESS:-weaviate:50051}
-      - WEAVIATE_SCHEME=${WEAVIATE_SCHEME:-http}
-      - WEAVIATE_AUTH_ENABLED=${WEAVIATE_AUTH_ENABLED:-false}
-      - WEAVIATE_API_KEY=${WEAVIATE_API_KEY:-}
-      - STORAGE_TYPE=${STORAGE_TYPE:-}
-      - LOCAL_STORAGE_BASE_DIR=${LOCAL_STORAGE_BASE_DIR:-}
-      - AUTO_RECOVER_DIRTY=${AUTO_RECOVER_DIRTY:-true}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
-      - MINIO_ACCESS_KEY_ID=${MINIO_ACCESS_KEY_ID:-minioadmin}
-      - MINIO_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY:-minioadmin}
-      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      - STREAM_MANAGER_TYPE=${STREAM_MANAGER_TYPE:-}
-      - REDIS_ADDR=redis:6379
-      - REDIS_USERNAME=${REDIS_USERNAME:-}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - REDIS_DB=${REDIS_DB:-}
-      - REDIS_PREFIX=${REDIS_PREFIX:-}
-      - ENABLE_GRAPH_RAG=${ENABLE_GRAPH_RAG:-}
-      - NEO4J_ENABLE=${NEO4J_ENABLE:-}
-      - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
-      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
-      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
-      - TENANT_AES_KEY=${TENANT_AES_KEY:-}
-      - SYSTEM_AES_KEY=${SYSTEM_AES_KEY:-}
-      - SSRF_WHITELIST=${SSRF_WHITELIST:-}
-      - CONCURRENCY_POOL_SIZE=${CONCURRENCY_POOL_SIZE:-5}
-      - JWT_SECRET=${JWT_SECRET:-}
-      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-50}
-      - WEKNORA_SANDBOX_MODE=${WEKNORA_SANDBOX_MODE:-docker}
-      - WEKNORA_SANDBOX_TIMEOUT=${WEKNORA_SANDBOX_TIMEOUT:-60}
-      - WEKNORA_SANDBOX_DOCKER_IMAGE=${WEKNORA_SANDBOX_DOCKER_IMAGE:-wechatopenai/weknora-sandbox:${WEKNORA_VERSION:-latest}}
-      - WEKNORA_AGENT_LLM_TIMEOUT=${WEKNORA_AGENT_LLM_TIMEOUT:-}
-      - APK_MIRROR_ARG=${APK_MIRROR_ARG:-}
-    depends_on:
-      redis:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-      docreader:
-        condition: service_healthy
-    networks:
-      - meta-network
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # app:
+  #   image: ${APP_IMAGE:-wechatopenai/weknora-app}:${WEKNORA_VERSION:-latest}
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.app
+  #     args:
+  #       - APK_MIRROR_ARG=${APK_MIRROR_ARG:-}
+  #   container_name: meta-app
+  #   ports:
+  #     - "${APP_PORT:-8080}:8080"
+  #   volumes:
+  #     - meta-data-files:/data/files
+  #     - meta-docreader-tmp:/tmp/docreader:ro
+  #     - ./config/config.yaml:/app/config/config.yaml
+  #     - ./skills:/app/skills
+  #     # bind 长格式：短格式下 `bin/frontend` 会被当成命名卷（须 ./ 或本长格式）
+  #     - type: bind
+  #       source: ${WEKNORA_WEB_DIR:-./bin/frontend}
+  #       target: /app/bin/frontend
+  #       read_only: true
+  #     - type: bind
+  #       source: ${WEKNORA_ADMIN_WEB_DIR:-./bin/admin}
+  #       target: /app/bin/admin
+  #       read_only: true
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 60s
+  #   environment:
+  #     - LOG_LEVEL=${LOG_LEVEL:-}
+  #     - COS_SECRET_ID=${COS_SECRET_ID:-}
+  #     - COS_SECRET_KEY=${COS_SECRET_KEY:-}
+  #     - COS_REGION=${COS_REGION:-}
+  #     - COS_BUCKET_NAME=${COS_BUCKET_NAME:-}
+  #     - COS_APP_ID=${COS_APP_ID:-}
+  #     - COS_PATH_PREFIX=${COS_PATH_PREFIX:-}
+  #     - COS_ENABLE_OLD_DOMAIN=${COS_ENABLE_OLD_DOMAIN:-}
+  #     - GIN_MODE=${GIN_MODE:-release}
+  #     - DISABLE_REGISTRATION=${DISABLE_REGISTRATION:-false}
+  #     - DB_DRIVER=postgres
+  #     - DB_HOST=postgres
+  #     - DB_PORT=5432
+  #     - DB_USER=${DB_USER:-}
+  #     - DB_PASSWORD=${DB_PASSWORD:-}
+  #     - DB_NAME=${DB_NAME:-}
+  #     - TZ=${TZ:-Asia/Shanghai}
+  #     - WEKNORA_LANGUAGE=${WEKNORA_LANGUAGE:-zh-CN}
+  #     # 由 Go 托管静态资源（与 router 中 WEKNORA_SERVE_WEB / bin/frontend 一致）
+  #     - WEKNORA_SERVE_WEB=${WEKNORA_SERVE_WEB:-1}
+  #     - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  #     - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-WeKnora}
+  #     - OTEL_TRACES_EXPORTER=${OTEL_TRACES_EXPORTER:-none}
+  #     - OTEL_METRICS_EXPORTER=${OTEL_METRICS_EXPORTER:-none}
+  #     - OTEL_LOGS_EXPORTER=${OTEL_LOGS_EXPORTER:-none}
+  #     - OTEL_PROPAGATORS=${OTEL_PROPAGATORS:-tracecontext,baggage}
+  #     - RETRIEVE_DRIVER=${RETRIEVE_DRIVER:-}
+  #     - ELASTICSEARCH_ADDR=${ELASTICSEARCH_ADDR:-}
+  #     - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-}
+  #     - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-}
+  #     - ELASTICSEARCH_INDEX=${ELASTICSEARCH_INDEX:-}
+  #     - QDRANT_HOST=${QDRANT_HOST:-qdrant}
+  #     - QDRANT_PORT=${QDRANT_PORT:-6334}
+  #     - QDRANT_COLLECTION=${QDRANT_COLLECTION:-weknora_embeddings}
+  #     - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+  #     - QDRANT_USE_TLS=${QDRANT_USE_TLS:-false}
+  #     - MILVUS_ADDRESS=${MILVUS_ADDRESS:-milvus:19530}
+  #     - MILVUS_COLLECTION=${MILVUS_COLLECTION:-weknora_embeddings}
+  #     - MILVUS_METRIC_TYPE=${MILVUS_METRIC_TYPE:-IP}
+  #     - DOCREADER_ADDR=${DOCREADER_ADDR:-docreader:50051}
+  #     - DOCREADER_TRANSPORT=${DOCREADER_TRANSPORT:-grpc}
+  #     - WEAVIATE_HOST=${WEAVIATE_HOST:-weaviate:8080}
+  #     - WEAVIATE_GRPC_ADDRESS=${WEAVIATE_GRPC_ADDRESS:-weaviate:50051}
+  #     - WEAVIATE_SCHEME=${WEAVIATE_SCHEME:-http}
+  #     - WEAVIATE_AUTH_ENABLED=${WEAVIATE_AUTH_ENABLED:-false}
+  #     - WEAVIATE_API_KEY=${WEAVIATE_API_KEY:-}
+  #     - STORAGE_TYPE=${STORAGE_TYPE:-}
+  #     - LOCAL_STORAGE_BASE_DIR=${LOCAL_STORAGE_BASE_DIR:-}
+  #     - AUTO_RECOVER_DIRTY=${AUTO_RECOVER_DIRTY:-true}
+  #     - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+  #     - MINIO_ACCESS_KEY_ID=${MINIO_ACCESS_KEY_ID:-minioadmin}
+  #     - MINIO_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY:-minioadmin}
+  #     - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-}
+  #     - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  #     - STREAM_MANAGER_TYPE=${STREAM_MANAGER_TYPE:-}
+  #     - REDIS_ADDR=redis:6379
+  #     - REDIS_USERNAME=${REDIS_USERNAME:-}
+  #     - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+  #     - REDIS_DB=${REDIS_DB:-}
+  #     - REDIS_PREFIX=${REDIS_PREFIX:-}
+  #     - ENABLE_GRAPH_RAG=${ENABLE_GRAPH_RAG:-}
+  #     - NEO4J_ENABLE=${NEO4J_ENABLE:-}
+  #     - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
+  #     - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+  #     - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+  #     - TENANT_AES_KEY=${TENANT_AES_KEY:-}
+  #     - SYSTEM_AES_KEY=${SYSTEM_AES_KEY:-}
+  #     - SSRF_WHITELIST=${SSRF_WHITELIST:-}
+  #     - CONCURRENCY_POOL_SIZE=${CONCURRENCY_POOL_SIZE:-5}
+  #     - JWT_SECRET=${JWT_SECRET:-}
+  #     - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-50}
+  #     - WEKNORA_SANDBOX_MODE=${WEKNORA_SANDBOX_MODE:-docker}
+  #     - WEKNORA_SANDBOX_TIMEOUT=${WEKNORA_SANDBOX_TIMEOUT:-60}
+  #     - WEKNORA_SANDBOX_DOCKER_IMAGE=${WEKNORA_SANDBOX_DOCKER_IMAGE:-wechatopenai/weknora-sandbox:${WEKNORA_VERSION:-latest}}
+  #     - WEKNORA_AGENT_LLM_TIMEOUT=${WEKNORA_AGENT_LLM_TIMEOUT:-}
+  #     - APK_MIRROR_ARG=${APK_MIRROR_ARG:-}
+  #   depends_on:
+  #     redis:
+  #       condition: service_started
+  #     postgres:
+  #       condition: service_healthy
+  #     docreader:
+  #       condition: service_healthy
+  #   networks:
+  #     - meta-network
+  #   restart: unless-stopped
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
 
 networks:
   meta-network:
