@@ -146,7 +146,7 @@ func tryPlatformAdminTenantAuth(
 	}
 	tidStr := strings.TrimSpace(c.GetHeader("X-Tenant-ID"))
 	if tidStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header required for platform admin tenant API access"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Please select a tenant first in the platform admin console"})
 		c.Abort()
 		return true
 	}

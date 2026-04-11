@@ -15,11 +15,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { listAllKnowledgeBasesAdmin } from '@/api/platform-admin'
 
 const STORAGE_KEY = 'weknora_platform_manage_tenant_id'
 
+// 优先从 localStorage 恢复租户 ID
 const tenantId = ref<string>(localStorage.getItem(STORAGE_KEY) || '')
 const options = ref<{ label: string; value: string }[]>([])
 const loading = ref(true)
@@ -27,11 +28,21 @@ const loading = ref(true)
 function persist() {
   if (tenantId.value) {
     localStorage.setItem(STORAGE_KEY, tenantId.value)
+    // 触发一个自定义事件，通知其他组件租户已选择
+    window.dispatchEvent(new CustomEvent('platform-tenant-selected', {
+      detail: { tenantId: tenantId.value }
+    }))
   }
 }
 
 function onChange() {
   persist()
+}
+
+// 立即检查 localStorage 中是否已有租户 ID，如果有则直接使用
+const savedTenantId = localStorage.getItem(STORAGE_KEY)
+if (savedTenantId) {
+  tenantId.value = savedTenantId
 }
 
 onMounted(async () => {
@@ -43,9 +54,13 @@ onMounted(async () => {
     }
     const ids = [...set].sort((a, b) => a - b)
     options.value = ids.map((id) => ({ label: `租户 ${id}`, value: String(id) }))
+
     const valid = ids.map(String).includes(tenantId.value)
     if ((!tenantId.value || !valid) && ids.length > 0) {
       tenantId.value = String(ids[0]!)
+      persist()
+    } else if (valid) {
+      // 如果已有有效的租户 ID，也触发事件通知
       persist()
     }
   } catch (e) {

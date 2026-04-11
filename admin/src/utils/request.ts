@@ -78,6 +78,9 @@ instance.interceptors.request.use(
       const tid = localStorage.getItem('weknora_platform_manage_tenant_id')
       if (tid) {
         config.headers["X-Tenant-ID"] = tid
+      } else {
+        // 平台管理员但未选择租户：可以在这里显示提示或阻止请求
+        console.warn('Platform admin: No tenant selected yet. Please select a tenant in the top bar.')
       }
     } else if (userTok) {
       config.headers["Authorization"] = `Bearer ${userTok}`
@@ -175,9 +178,8 @@ instance.interceptors.response.use(
       return Promise.reject({ message: t('error.pleaseRelogin') })
     }
 
-    // 平台管理员会话下，业务接口 401 交给页面自行处理（例如租户未选/无权限），不应自动清登录态
+    // 平台管理员会话下，业务接口 400/401 特殊处理
     if (
-      error.response.status === 401 &&
       isPlatformAdminSession &&
       !originalRequest?.url?.includes('/api/v1/admin/auth/login')
     ) {
@@ -189,7 +191,21 @@ instance.interceptors.response.use(
         else if (d.error && typeof d.error === 'object' && d.error.message) msg = d.error.message;
         else msg = d.message;
       }
-      return Promise.reject({ status, message: msg || t('error.pleaseRelogin') })
+
+      // 特殊处理：未选择租户的错误提示
+      if (status === 400 && msg?.includes('select a tenant')) {
+        // 显示更友好的提示
+        console.warn('Please select a tenant in the top bar first.');
+        return Promise.reject({
+          status,
+          message: '请先在顶部「管理租户」中选择一个租户',
+          _tenantRequired: true
+        })
+      }
+
+      if (status === 401) {
+        return Promise.reject({ status, message: msg || t('error.pleaseRelogin') })
+      }
     }
 
     // 如果是401错误且不是刷新token的请求，尝试刷新token
