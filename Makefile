@@ -86,6 +86,14 @@ ifeq ($(shell uname -s),Darwin)
 CGO_OPT_CFLAGS += -Wno-gnu-folding-constant
 endif
 
+# 仅 Apple ld 支持；GNU ld（Linux）传入会导致链接行为异常。自定义 SQLite：EXTRA_CGO_LDFLAGS="-L/usr/local/lib -lsqlite3" make build
+CGO_OPT_LDFLAGS :=
+ifeq ($(shell uname -s),Darwin)
+CGO_OPT_LDFLAGS := -Wl,-no_warn_duplicate_libraries
+endif
+EXTRA_CGO_LDFLAGS ?=
+CGO_LDFLAGS_FULL := $(strip $(CGO_OPT_LDFLAGS) $(EXTRA_CGO_LDFLAGS))
+
 # sqlite-vec 需要 SQLITE_INNOCUOUS（SQLite 3.31+）；旧版 sqlite3.h 无该宏。检测用 grep SQLITE_INNOCUOUS，避免 Makefile 将 # 当作注释。
 NEED_SQLITE_INNOC_DEF := $(shell test -f /usr/include/sqlite3.h && ! grep -q SQLITE_INNOCUOUS /usr/include/sqlite3.h && echo 1)
 ifneq ($(strip $(NEED_SQLITE_INNOC_DEF)),)
@@ -106,13 +114,13 @@ build-admin-web:
 # 二进制 + 静态资源，便于单机部署：WEKNORA_SERVE_WEB=1 或存在 bin/frontend/index.html 时由 Go 托管 / 与 /admin
 build-bin: build-web build-admin-web
 	mkdir -p bin
-	CGO_ENABLED=1 CGO_CFLAGS="$(CGO_OPT_CFLAGS)" CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" \
+	CGO_ENABLED=1 CGO_CFLAGS="$(CGO_OPT_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS_FULL)" \
 		go build -ldflags="$(PROTO_CONFLICT_LDFLAG)" -o bin/$(BINARY_NAME) $(MAIN_PATH)
 
 # Build the application（输出到 bin/，避免与未带 ldflags 的旧 ./bin/WeKnora 混淆）
 build:
 	mkdir -p bin
-	CGO_ENABLED=1 CGO_CFLAGS="$(CGO_OPT_CFLAGS)" CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" \
+	CGO_ENABLED=1 CGO_CFLAGS="$(CGO_OPT_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS_FULL)" \
 		go build -ldflags="$(PROTO_CONFLICT_LDFLAG)" -o bin/$(BINARY_NAME) $(MAIN_PATH)
 
 # Run the application
@@ -264,7 +272,7 @@ build-prod:
 	COMMIT_ID=$${COMMIT_ID:-unknown}; \
 	CGO_ENABLED=1 \
 	CGO_CFLAGS="$(CGO_OPT_CFLAGS)" \
-	CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" \
+	CGO_LDFLAGS="$(CGO_LDFLAGS_FULL)" \
 	BUILD_TIME=$${BUILD_TIME:-unknown}; \
 	GO_VERSION=$${GO_VERSION:-unknown}; \
 	LDFLAGS="-X 'github.com/Tencent/WeKnora/internal/handler.Version=$$VERSION' -X 'github.com/Tencent/WeKnora/internal/handler.Edition=standard' -X 'github.com/Tencent/WeKnora/internal/handler.CommitID=$$COMMIT_ID' -X 'github.com/Tencent/WeKnora/internal/handler.BuildTime=$$BUILD_TIME' -X 'github.com/Tencent/WeKnora/internal/handler.GoVersion=$$GO_VERSION' -X 'google.golang.org/protobuf/reflect/protoregistry.conflictPolicy=warn'"; \
