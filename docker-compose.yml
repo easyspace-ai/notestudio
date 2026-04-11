@@ -3,7 +3,7 @@ services:
   # Sandbox 镜像：仅用于 build/pull，非常驻服务；app 执行 Skills 时按需 docker run 该镜像，用毕即释
   sandbox:
     image: wechatopenai/weknora-sandbox:${WEKNORA_VERSION:-latest}
-    container_name: WeKnora-sandbox
+    container_name: meta-sandbox
     build:
       context: .
       dockerfile: docker/Dockerfile.sandbox
@@ -13,17 +13,17 @@ services:
     restart: "no"
 
   docreader:
-    image: crpi-mpi18r3iierw5366.cn-wulanchabu.personal.cr.aliyuncs.com/metanote/docreader:${WEKNORA_VERSION:-latest}
+    image: crpi-mpi18r3iierw5366.cn-wulanchabu.personal.cr.aliyuncs.com/${DOCKER_IMAGE_SPACE}/docreader:${WEKNORA_VERSION:-latest}
     # build:
     #   context: .
     #   dockerfile: docker/Dockerfile.docreader
     #   args:
     #     - APT_MIRROR=${APT_MIRROR:-}
-    container_name: WeKnora-docreader
+    container_name: meta-docreader
     ports:
       - "${DOCREADER_PORT:-50051}:50051"
     volumes:
-      - docreader-tmp:/tmp/docreader
+      - meta-docreader-tmp:/tmp/docreader
     environment:
       - DOCREADER_IMAGE_OUTPUT_DIR=/tmp/docreader
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-}
@@ -34,7 +34,7 @@ services:
       retries: 3
       start_period: 60s
     networks:
-      - WeKnora-network
+      - meta-network
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -42,15 +42,17 @@ services:
   # 修改的PostgreSQL配置
   postgres:
     image: paradedb/paradedb:v0.22.2-pg17
-    container_name: WeKnora-postgres
+    container_name: meta-postgres
     environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=${DB_NAME}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - meta-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${DB_HOST_PORT:-5420}:5432"
     networks:
-      - WeKnora-network
+      - meta-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
       interval: 10s # 增加时间间隔
@@ -63,20 +65,22 @@ services:
 
   redis:
     image: redis:7.0-alpine
-    container_name: WeKnora-redis
+    container_name: meta-redis
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     restart: always
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
     networks:
-      - WeKnora-network
+      - meta-network
 
    
 
 networks:
-  WeKnora-network:
+  meta-network:
     driver: bridge
 
 volumes:
-  postgres-data:
-  data-files:
-  docreader-tmp:
+  meta-postgres-data:
+  meta-data-files:
+  meta-docreader-tmp:
   
