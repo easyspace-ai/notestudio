@@ -3,10 +3,12 @@ import type { ComponentProps } from "react";
 
 import { MessageResponse } from "@/components/ai-elements/message";
 import { useWeKnoraKbFileIndex } from "@/components/project/weknora-kb-citation-context";
+import { useWeKnoraChatSession } from "@/components/project/weknora-chat-session-context";
 import { cn } from "@/lib/utils";
 
 import { assistantStreamdownPlugins } from "./plugins";
 import { preprocessKbCitationTags, preprocessKbPlainDocNames } from "./preprocess-kb-tags";
+import { preprocessWorkspaceArtifactLinks } from "./preprocess-workspace-links";
 import { WeKnoraMarkdownAnchor } from "./weknora-markdown-anchor";
 
 export type WeKnoraAssistantMarkdownProps = Omit<
@@ -31,13 +33,15 @@ export const WeKnoraAssistantMarkdown = memo(function WeKnoraAssistantMarkdown({
   ...rest
 }: WeKnoraAssistantMarkdownProps) {
   const kbFileIndex = useWeKnoraKbFileIndex();
+  const { sessionId } = useWeKnoraChatSession();
   const processed = useMemo(() => {
     let s = preprocessKbCitationTags(children);
     if (kbFileIndex && kbFileIndex.size > 0) {
       s = preprocessKbPlainDocNames(s, kbFileIndex);
     }
+    s = preprocessWorkspaceArtifactLinks(s, sessionId);
     return s;
-  }, [children, kbFileIndex]);
+  }, [children, kbFileIndex, sessionId]);
 
   const components = useMemo(
     () => ({

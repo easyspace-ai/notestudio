@@ -14,6 +14,10 @@ import type { WeKnoraKnowledge, WeKnoraSession } from "@/api/weknora/types";
 import { NotebookShell, type NotebookWorkbenchTab } from "@/components/layout/NotebookShell";
 import { WeKnoraKnowledgePreviewPane } from "@/components/project/WeKnoraKnowledgePreview";
 import { WeKnoraKnowledgeSidebar } from "@/components/project/WeKnoraKnowledgeSidebar";
+import {
+  weknoraSessionArtifactToMaterial,
+  type WeKnoraSessionArtifact,
+} from "@/lib/weknoraChatArtifacts";
 import { weknoraStudioJobToMaterial } from "@/lib/weknoraStudioMaterial";
 import { cn } from "@/lib/utils";
 import { WeKnoraChatDock } from "@/components/project/WeKnoraChatDock";
@@ -76,6 +80,8 @@ export function WeKnoraProjectPage() {
   /** 右栏内联预览 Studio 产物（与 NotebookShell 右栏同宽，可再点「放大」居中浮层） */
   const [studioSidebarMaterial, setStudioSidebarMaterial] = useState<StudioMaterial | null>(null);
   const [studioExpandOpen, setStudioExpandOpen] = useState(false);
+  /** 对话中识别的 HTML/Markdown/工具输出文件，与异步 Studio 任务一并显示在右侧 */
+  const [sessionChatArtifacts, setSessionChatArtifacts] = useState<WeKnoraSessionArtifact[]>([]);
 
   const project = useQuery({
     queryKey: ["weknora-project", uuid],
@@ -101,6 +107,14 @@ export function WeKnoraProjectPage() {
   });
 
   const knowledgeRows = knowledgeList.data?.data ?? [];
+
+  // Convert knowledge rows to simple format for chat dock @ mentions
+  const knowledgeDocsForChat = useMemo(() => {
+    return knowledgeRows.map((k) => ({
+      id: k.id,
+      title: k.file_name || k.title || "未命名",
+    }));
+  }, [knowledgeRows]);
 
   const uploadKnowledge = useMutation({
     mutationFn: async (file: File) => knowledgeApi.uploadKnowledgeFile(kbId, file),
@@ -146,13 +160,17 @@ export function WeKnoraProjectPage() {
     queryFn: () => agentsApi.listAgents(),
   });
 
+  // 过滤掉内置 Agent，只保留自定义 Agent
+  const customAgents = useMemo(() => {
+    return (agents.data ?? []).filter(agent => !agent.is_builtin);
+  }, [agents.data]);
+
   useEffect(() => {
-    const list = agents.data;
-    if (!list?.length) return;
-    if (!agentId || !list.some((a) => a.id === agentId)) {
-      setAgentId(list[0]!.id);
+    if (!customAgents.length) return;
+    if (!agentId || !customAgents.some((a) => a.id === agentId)) {
+      setAgentId(customAgents[0]!.id);
     }
-  }, [agents.data, agentId]);
+  }, [customAgents, agentId]);
 
   const sessions = useQuery({
     queryKey: ["weknora-sessions", uuid],
@@ -184,6 +202,20 @@ export function WeKnoraProjectPage() {
     if (!pid || rows.length === 0) return [];
     return rows.map((j) => weknoraStudioJobToMaterial(j, pid));
   }, [project.data?.id, studioJobs.data?.data]);
+
+  const mergedStudioMaterials = useMemo((): StudioMaterial[] => {
+    const pid = project.data?.id?.trim() ? String(project.data.id) : "";
+    const fromChat = sessionChatArtifacts.map((a) =>
+      weknoraSessionArtifactToMaterial(a, pid || "local", sessionId),
+    );
+    return [...fromChat, ...studioMaterials].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    );
+  }, [sessionChatArtifacts, studioMaterials, project.data?.id, sessionId]);
+
+  useEffect(() => {
+    setSessionChatArtifacts([]);
+  }, [sessionId]);
 
   const createSession = useMutation({
     mutationFn: async () => {
@@ -418,6 +450,8 @@ export function WeKnoraProjectPage() {
       onFirstMessageComplete={handleFirstMessageComplete}
       onQuickSkill={onQuickSkill}
       studioQuickSkillsFromParent={studioQuickFromParent}
+      onSessionArtifacts={setSessionChatArtifacts}
+      knowledgeDocs={knowledgeDocsForChat}
     />
   );
 
@@ -427,7 +461,7 @@ export function WeKnoraProjectPage() {
         <StudioMaterialPreviewPane
           variant="sidebar"
           material={studioSidebarMaterial}
-          projectId={undefined}
+          projectId={project.data?.id ? String(project.data.id) : undefined}
           onClose={() => {
             setStudioSidebarMaterial(null);
             setStudioExpandOpen(false);
@@ -436,7 +470,7 @@ export function WeKnoraProjectPage() {
         />
       ) : (
         <StudioPanel
-          materials={studioMaterials}
+          materials={mergedStudioMaterials}
           materialsLoading={studioJobs.isLoading}
           onSelectMaterial={onSelectStudioMaterial}
           onQuickMaterial={onQuickStudio}
@@ -539,7 +573,7 @@ export function WeKnoraProjectPage() {
         right={shellRight}
       />
       <StudioMaterialExpandedOverlay
-        projectId={undefined}
+        projectId={project.data?.id ? String(project.data.id) : undefined}
         material={studioSidebarMaterial}
         open={studioExpandOpen}
         onMinimize={() => setStudioExpandOpen(false)}

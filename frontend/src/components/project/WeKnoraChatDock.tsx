@@ -26,8 +26,15 @@ import type { WeKnoraAgent } from "@/api/weknora/agents";
 import type { WeKnoraStreamResponse } from "@/api/weknora/types";
 import { AgentCanvasFrame } from "@/components/weknora/agent-canvas-frame";
 import { WeKnoraAssistantMarkdown, buildKnowledgeFileIndex } from "@/core/streamdown";
+import { WeKnoraChatSessionProvider } from "@/components/project/weknora-chat-session-context";
 import { WeKnoraKbCitationProvider } from "@/components/project/weknora-kb-citation-context";
 import { studioQuickIconTone, studioQuickSkillIcon } from "@/lib/studioQuickIcons";
+import {
+  artifactsFromToolResultData,
+  computeArtifactsFromMessages,
+  mergeArtifactLists,
+  type WeKnoraSessionArtifact,
+} from "@/lib/weknoraChatArtifacts";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -502,6 +509,10 @@ export function WeKnoraChatDock(props: {
     isLoading: boolean;
     isError: boolean;
   };
+  /** 对话中推导的 HTML/Markdown/工具文件等，供右侧 Studio 与异步 Studio 任务并列展示 */
+  onSessionArtifacts?: (artifacts: WeKnoraSessionArtifact[]) => void;
+  /** Knowledge documents list from parent, used for @ mentions (avoids duplicate fetch) */
+  knowledgeDocs?: { id: string; title: string }[];
 }) {
   const {
     sessionId,
@@ -512,6 +523,8 @@ export function WeKnoraChatDock(props: {
     onFirstMessageComplete,
     onQuickSkill,
     studioQuickSkillsFromParent,
+    onSessionArtifacts,
+    knowledgeDocs: knowledgeDocsFromParent,
   } = props;
 
   const qc = useQueryClient();
@@ -519,6 +532,7 @@ export function WeKnoraChatDock(props: {
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [streamEvents, setStreamEvents] = useState<StreamEventItem[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [streamToolArtifacts, setStreamToolArtifacts] = useState<WeKnoraSessionArtifact[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isContinuing, setIsContinuing] = useState(false);
   const [showMentionPopover, setShowMentionPopover] = useState(false);
@@ -574,7 +588,10 @@ export function WeKnoraChatDock(props: {
     ? studioQuickSkillsFromParent.isError
     : studioQuickSkillsQuery.isError;
 
-  const agentRows = useMemo(() => agents.data ?? [], [agents.data]);
+  const agentRows = useMemo(() => {
+    // 过滤掉内置 Agent，只显示自定义 Agent
+    return (agents.data ?? []).filter(agent => !agent.is_builtin);
+  }, [agents.data]);
 
   const currentAgent = useMemo((): WeKnoraAgent | undefined => {
     return agentRows.find((a) => a.id === agentId);
@@ -585,7 +602,22 @@ export function WeKnoraChatDock(props: {
     setStreamEvents([]);
     setStreamError(null);
     setIsContinuing(false);
+    setStreamToolArtifacts([]);
   }, [sessionId]);
+
+  const artifactsFromHistory = useMemo(
+    () => computeArtifactsFromMessages(history.data as WeKnoraMessage[] | undefined),
+    [history.data],
+  );
+
+  const mergedSessionArtifacts = useMemo(
+    () => mergeArtifactLists(artifactsFromHistory, streamToolArtifacts),
+    [artifactsFromHistory, streamToolArtifacts],
+  );
+
+  useEffect(() => {
+    onSessionArtifacts?.(mergedSessionArtifacts);
+  }, [mergedSessionArtifacts, onSessionArtifacts]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -603,8 +635,12 @@ export function WeKnoraChatDock(props: {
     }
   }, [input]);
 
-  // Load knowledge documents for @ mention
+  // Use knowledge docs from parent if available, otherwise load ourselves
   useEffect(() => {
+    if (knowledgeDocsFromParent) {
+      setKnowledgeDocs(knowledgeDocsFromParent);
+      return;
+    }
     if (!knowledgeBaseId) return;
     knowledgeApi.listKnowledge(knowledgeBaseId, { page: 1, page_size: 100 })
       .then((res) => {
@@ -617,13 +653,20 @@ export function WeKnoraChatDock(props: {
       .catch(() => {
         setKnowledgeDocs([]);
       });
-  }, [knowledgeBaseId]);
+  }, [knowledgeBaseId, knowledgeDocsFromParent]);
 
   const kbFileIndex = useMemo(() => buildKnowledgeFileIndex(knowledgeDocs), [knowledgeDocs]);
 
   const handleStreamEvent = useCallback((evt: WeKnoraStreamResponse) => {
     if (evt.response_type === "answer" || evt.response_type === "complete") return;
     if (evt.response_type === "agent_complete") return;
+    if (evt.response_type === "tool_result") {
+      const data = (evt.data ?? {}) as Record<string, unknown>;
+      const extra = artifactsFromToolResultData(data);
+      if (extra.length > 0) {
+        setStreamToolArtifacts((prev) => mergeArtifactLists(prev, extra));
+      }
+    }
     const data = (evt.data ?? {}) as Record<string, unknown>;
     setStreamEvents((prev) => {
       if (evt.response_type === "thinking") {
@@ -907,6 +950,7 @@ export function WeKnoraChatDock(props: {
   };
 
   return (
+    <WeKnoraChatSessionProvider sessionId={sessionId}>
     <WeKnoraKbCitationProvider value={kbFileIndex}>
     <div className="flex h-full min-h-0 flex-col bg-white">
       {/* Header */}
@@ -1254,5 +1298,6 @@ export function WeKnoraChatDock(props: {
       )}
     </div>
     </WeKnoraKbCitationProvider>
+    </WeKnoraChatSessionProvider>
   );
 }

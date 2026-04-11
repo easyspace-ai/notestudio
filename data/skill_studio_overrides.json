@@ -4,7 +4,16 @@
     "html-ppt-designer": {
       "show_in_studio_ui": true
     },
+    "lecture-generator": {
+      "display_label": "交互课件",
+      "studio_kind": "html",
+      "show_in_studio_ui": true
+    },
     "podcast-generation": {
+      "show_in_studio_ui": true
+    },
+    "ppt-agent-workflow": {
+      "display_label": "ppt",
       "show_in_studio_ui": true
     },
     "ppt-generation": {

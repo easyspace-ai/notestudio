@@ -10,6 +10,9 @@ import {
   fetchStudioFileBlob,
   fetchStudioFileText,
 } from "@/lib/downloadProjectStudioFile";
+import { apiFetchBlob } from "@/api/http";
+import { fetchSessionWorkspaceFileBlob } from "@/api/weknora/sessionWorkspaceFile";
+import { studioArtifactFilePath } from "@/lib/studioArtifactOpen";
 import { cn } from "@/lib/utils";
 
 function canFetchProjectMaterial(projectId: string | null | undefined): projectId is string {
@@ -37,6 +40,201 @@ function exportFileMeta(payload: Record<string, unknown>, key: string) {
 }
 
 const studioHtmlIframeSandbox = "allow-scripts allow-forms";
+
+/**
+ * Preview/download artifacts stored as provider paths (`local://…`, etc.) via `GET /files?file_path=`.
+ * Used when ChatClaw project materials API is unavailable (e.g. WeKnora Studio jobs, chat tool output).
+ */
+function StudioProviderFileArtifactBody(props: {
+  filePath: string;
+  contentLayout: StudioMaterialContentLayout;
+  iframeClassName: string;
+  downloadName: string;
+  /** When set, load via GET /sessions/:id/workspace-file (agent workspace); otherwise `local://` via /files */
+  workspaceSessionId?: string | null;
+}) {
+  const { filePath, contentLayout, iframeClassName, downloadName, workspaceSessionId } = props;
+  const [htmlDoc, setHtmlDoc] = useState<string | null>(null);
+  const [mdText, setMdText] = useState<string | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(true);
+
+  const lowerName = downloadName.toLowerCase();
+  const lowerPath = filePath.toLowerCase();
+  const isPptx = lowerName.endsWith(".pptx") || lowerPath.endsWith(".pptx");
+  const isHtml = lowerName.endsWith(".html") || lowerName.endsWith(".htm") || /\.html?$/.test(lowerPath);
+  const isMd =
+    lowerName.endsWith(".md") || lowerName.endsWith(".markdown") || /\.(md|markdown)$/.test(lowerPath);
+
+  useEffect(() => {
+    let revoke: string | null = null;
+    setBusy(true);
+    setErr(null);
+    setHtmlDoc(null);
+    setMdText(null);
+    setBlobUrl(null);
+
+    void (async () => {
+      try {
+        const loadBlob = async () => {
+          const sid = workspaceSessionId?.trim();
+          const fp = filePath.trim();
+          const useWs =
+            Boolean(sid) && !/^local:\/\//i.test(fp) && !/^https?:\/\//i.test(fp) && !/^blob:/i.test(fp);
+          if (useWs && sid) {
+            return fetchSessionWorkspaceFileBlob(sid, fp);
+          }
+          return apiFetchBlob(`/files?file_path=${encodeURIComponent(fp)}`);
+        };
+        const blob = await loadBlob();
+        if (isPptx) {
+          return;
+        }
+        if (isHtml || (!isMd && blob.type.includes("html"))) {
+          const t = await blob.text();
+          setHtmlDoc(studioPayloadLooksLikeHtml(t) || isHtml ? t : `<pre>${escapeHtmlLite(t)}</pre>`);
+          return;
+        }
+        if (isMd || blob.type.startsWith("text/")) {
+          const t = await blob.text();
+          setMdText(t);
+          return;
+        }
+        const u = URL.createObjectURL(blob);
+        revoke = u;
+        setBlobUrl(u);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "加载失败");
+      } finally {
+        setBusy(false);
+      }
+    })();
+
+    return () => {
+      if (revoke) URL.revokeObjectURL(revoke);
+    };
+  }, [filePath, downloadName, workspaceSessionId]);
+
+  const doDownload = () => {
+    void (async () => {
+      try {
+        const sid = workspaceSessionId?.trim();
+        const fp = filePath.trim();
+        const useWs =
+          Boolean(sid) && !/^local:\/\//i.test(fp) && !/^https?:\/\//i.test(fp) && !/^blob:/i.test(fp);
+        const blob = useWs
+          ? await fetchSessionWorkspaceFileBlob(sid!, fp)
+          : await apiFetchBlob(`/files?file_path=${encodeURIComponent(fp)}`);
+        const a = document.createElement("a");
+        const href = URL.createObjectURL(blob);
+        a.href = href;
+        a.download = downloadName || "download";
+        a.click();
+        URL.revokeObjectURL(href);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "下载失败");
+      }
+    })();
+  };
+
+  if (busy) {
+    return (
+      <div className="text-muted-foreground flex items-center gap-2 py-6 text-sm">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        加载文件…
+      </div>
+    );
+  }
+  if (err) {
+    return <p className="text-destructive py-4 text-sm">{err}</p>;
+  }
+
+  if (isPptx) {
+    return (
+      <div className="space-y-4">
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          幻灯片文件已生成。预览请在本地用 PowerPoint / Keynote 打开；也可直接下载。
+        </p>
+        <button
+          type="button"
+          onClick={doDownload}
+          className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-sm font-semibold text-on-surface hover:bg-surface-container-high"
+        >
+          <Download className="h-4 w-4" />
+          下载 {downloadName || "presentation.pptx"}
+        </button>
+      </div>
+    );
+  }
+
+  if (htmlDoc) {
+    return (
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={doDownload}
+          className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-sm font-semibold text-on-surface hover:bg-surface-container-high"
+        >
+          <Download className="h-4 w-4" />
+          下载 HTML
+        </button>
+        <iframe
+          title="HTML preview"
+          className={iframeClassName}
+          srcDoc={htmlDoc}
+          sandbox={studioHtmlIframeSandbox}
+        />
+      </div>
+    );
+  }
+
+  if (mdText != null) {
+    return (
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={doDownload}
+          className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-sm font-semibold text-on-surface hover:bg-surface-container-high"
+        >
+          <Download className="h-4 w-4" />
+          下载 Markdown
+        </button>
+        <StudioMarkdownWithSourceToggle markdown={mdText} contentLayout={contentLayout} />
+      </div>
+    );
+  }
+
+  if (blobUrl) {
+    return (
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={doDownload}
+          className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-sm font-semibold text-on-surface hover:bg-surface-container-high"
+        >
+          <Download className="h-4 w-4" />
+          下载文件
+        </button>
+        <a
+          href={blobUrl}
+          download={downloadName}
+          className="text-primary text-sm underline underline-offset-2"
+          target="_blank"
+          rel="noreferrer"
+        >
+          在新标签页打开
+        </a>
+      </div>
+    );
+  }
+
+  return <p className="text-muted-foreground text-sm">无法预览该文件类型。</p>;
+}
+
+function escapeHtmlLite(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 /** sidebar：与 NotebookShell 右栏同宽内联；expanded：居中放大层 */
 export type StudioMaterialContentLayout = "default" | "sidebar" | "expanded" | "embedded";
@@ -574,6 +772,7 @@ function MaterialBody(props: {
           : "h-[min(60vh,480px)] w-full rounded-xl border border-outline-variant/15";
   const [pptxBusy, setPptxBusy] = useState(false);
   const [pptxErr, setPptxErr] = useState<string | null>(null);
+  const workspaceSessionId = str(payload, "_weknora_session_id");
 
   switch (kind) {
     case "audio": {
@@ -599,6 +798,24 @@ function MaterialBody(props: {
         (typeof pptxObj?.file_name === "string" ? pptxObj.file_name : null) ??
         serverPptxName ??
         "presentation.pptx";
+
+      const slideProviderPath = studioArtifactFilePath(payload);
+      if (
+        slideProviderPath &&
+        /\.pptx$/i.test(slideProviderPath) &&
+        !/^https?:\/\//i.test(slideProviderPath.trim()) &&
+        !canFetchProjectMaterial(projectId)
+      ) {
+        return (
+          <StudioProviderFileArtifactBody
+            filePath={slideProviderPath.trim()}
+            contentLayout={contentLayout}
+            iframeClassName={iframeHtml}
+            downloadName={pptxName}
+            workspaceSessionId={workspaceSessionId}
+          />
+        );
+      }
 
       const pptxDownload =
         canFetchProjectMaterial(projectId) && pptxOk ? (
@@ -675,6 +892,40 @@ function MaterialBody(props: {
       const ex = exportFileMeta(payload, "html");
       const md = str(payload, "markdown");
       const serverFile = str(payload, "file_name");
+      const srcDocInline = str(payload, "srcDoc");
+      /**
+       * Inline HTML (e.g. from assistant ```html fences / weknoraChatArtifacts fence) must preview here.
+       * If we only have `file_name` + projectId, the ChatClaw materials API branch would run and 404 on WeKnora.
+       */
+      if (srcDocInline?.trim()) {
+        const dlName = serverFile ?? "page.html";
+        return (
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => {
+                const blob = new Blob([srcDocInline], { type: "text/html;charset=utf-8" });
+                const href = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = href;
+                a.download = dlName;
+                a.click();
+                URL.revokeObjectURL(href);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-sm font-semibold text-on-surface hover:bg-surface-container-high"
+            >
+              <Download className="h-4 w-4" />
+              下载 HTML
+            </button>
+            <iframe
+              title="HTML preview"
+              className={iframeHtml}
+              srcDoc={srcDocInline}
+              sandbox={studioHtmlIframeSandbox}
+            />
+          </div>
+        );
+      }
       if (canFetchProjectMaterial(projectId) && (ex || serverFile)) {
         return (
           <StudioExportPreview
@@ -687,8 +938,23 @@ function MaterialBody(props: {
           />
         );
       }
+      const providerPath = studioArtifactFilePath(payload);
+      if (
+        providerPath &&
+        !/^https?:\/\//i.test(providerPath.trim()) &&
+        !/^blob:/i.test(providerPath.trim())
+      ) {
+        return (
+          <StudioProviderFileArtifactBody
+            filePath={providerPath.trim()}
+            contentLayout={contentLayout}
+            iframeClassName={iframeHtml}
+            downloadName={serverFile ?? "page.html"}
+            workspaceSessionId={workspaceSessionId}
+          />
+        );
+      }
       const src = str(payload, "iframeUrl") ?? str(payload, "url");
-      const srcDocInline = str(payload, "srcDoc");
       if (src) {
         const httpSrc = /^https?:\/\//i.test(src);
         const dlName =
@@ -727,16 +993,6 @@ function MaterialBody(props: {
           </div>
         );
       }
-      if (srcDocInline) {
-        return (
-          <iframe
-            title="HTML preview"
-            className={iframeHtml}
-            srcDoc={srcDocInline}
-            sandbox={studioHtmlIframeSandbox}
-          />
-        );
-      }
       if (md) {
         if (studioPayloadLooksLikeHtml(md)) {
           return (
@@ -768,6 +1024,24 @@ function MaterialBody(props: {
           />
         );
       }
+      {
+        const providerPath = studioArtifactFilePath(payload);
+        if (
+          providerPath &&
+          !/^https?:\/\//i.test(providerPath.trim()) &&
+          !/^blob:/i.test(providerPath.trim())
+        ) {
+          return (
+            <StudioProviderFileArtifactBody
+              filePath={providerPath.trim()}
+              contentLayout={contentLayout}
+              iframeClassName={iframeHtml}
+              downloadName={serverFile ?? "mindmap.html"}
+              workspaceSessionId={workspaceSessionId}
+            />
+          );
+        }
+      }
       const raw = payload["nodes"];
       if (raw != null && typeof raw === "object") {
         return (
@@ -797,6 +1071,24 @@ function MaterialBody(props: {
     case "data_table":
     default: {
       const md = str(payload, "markdown") ?? str(payload, "text");
+      const reportPath = studioArtifactFilePath(payload);
+      const reportFile = str(payload, "file_name");
+      if (
+        reportPath &&
+        /\.(md|markdown)$/i.test(reportPath) &&
+        !/^https?:\/\//i.test(reportPath.trim()) &&
+        !canFetchProjectMaterial(projectId)
+      ) {
+        return (
+          <StudioProviderFileArtifactBody
+            filePath={reportPath.trim()}
+            contentLayout={contentLayout}
+            iframeClassName={iframeHtml}
+            downloadName={reportFile ?? "document.md"}
+            workspaceSessionId={workspaceSessionId}
+          />
+        );
+      }
       if (md) {
         if (studioPayloadLooksLikeHtml(md)) {
           return (

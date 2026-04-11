@@ -316,6 +316,8 @@ func RegisterSessionRoutes(r *gin.RouterGroup, handler *session.Handler) {
 	{
 		sessions.POST("", handler.CreateSession)
 		sessions.DELETE("/batch", handler.BatchDeleteSessions)
+		// Agent workspace file (read); must be registered before GET /:id so "workspace-file" is not captured as id
+		sessions.GET("/:id/workspace-file", handler.GetWorkspaceFile)
 		sessions.GET("/:id", handler.GetSession)
 		sessions.GET("", handler.GetSessionsByTenant)
 		sessions.PUT("/:id", handler.UpdateSession)
@@ -667,6 +669,7 @@ func RegisterIMChannelRoutes(r *gin.RouterGroup, imHandler *handler.IMHandler) {
 }
 
 // shouldServeEmbeddedWebUI enables filesystem SPAs when Lite, explicit env, or built assets exist.
+// Admin-only deployments (bin/admin/index.html or WEKNORA_ADMIN_WEB_DIR) also count so /admin is not blocked by Auth.
 func shouldServeEmbeddedWebUI() bool {
 	if handler.Edition == "lite" {
 		return true
@@ -678,6 +681,9 @@ func shouldServeEmbeddedWebUI() bool {
 		return true
 	}
 	if _, err := os.Stat(filepath.Join("web", "index.html")); err == nil {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join(resolveAdminWebRoot(), "index.html")); err == nil {
 		return true
 	}
 	return false
@@ -742,9 +748,11 @@ func serveEmbeddedWebUIIfConfigured(r *gin.Engine) {
 		return
 	}
 	frontIndex := filepath.Join(frontAbs, "index.html")
-	if _, err := os.Stat(frontIndex); err != nil {
-		logger.Warnf(context.Background(), "[Router] embedded web: no %s, skip static UI", frontIndex)
-		return
+	frontIndexOK := false
+	if _, err := os.Stat(frontIndex); err == nil {
+		frontIndexOK = true
+	} else {
+		logger.Warnf(context.Background(), "[Router] embedded web: no main frontend at %s", frontIndex)
 	}
 
 	adminRoot := resolveAdminWebRoot()
@@ -757,13 +765,22 @@ func serveEmbeddedWebUIIfConfigured(r *gin.Engine) {
 		}
 	}
 
-	logger.Infof(context.Background(), "[Router] Serving main frontend from %s (/)", frontAbs)
+	if !frontIndexOK && adminIndex == "" {
+		logger.Warnf(context.Background(), "[Router] embedded web: no main frontend and no admin index, skip static UI")
+		return
+	}
+
+	if frontIndexOK {
+		logger.Infof(context.Background(), "[Router] Serving main frontend from %s (/)", frontAbs)
+	}
 	if adminIndex != "" {
 		logger.Infof(context.Background(), "[Router] Serving admin UI from %s (/admin)", adminAbs)
 	}
 
-	frontFS := http.Dir(frontAbs)
-	frontServer := http.FileServer(frontFS)
+	var frontServer http.Handler
+	if frontIndexOK {
+		frontServer = http.FileServer(http.Dir(frontAbs))
+	}
 
 	r.Use(func(c *gin.Context) {
 		if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
@@ -798,6 +815,11 @@ func serveEmbeddedWebUIIfConfigured(r *gin.Engine) {
 			}
 			c.File(adminIndex)
 			c.Abort()
+			return
+		}
+
+		if !frontIndexOK || frontServer == nil {
+			c.Next()
 			return
 		}
 

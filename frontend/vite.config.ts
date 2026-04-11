@@ -11,7 +11,7 @@ const backend = process.env.VITE_DEV_BACKEND ?? "http://127.0.0.1:8080";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
-    outDir: "../bin/web",
+    outDir: "../bin/frontend",
     emptyOutDir: true,
   },
   resolve: {

@@ -86,6 +86,12 @@ ifeq ($(shell uname -s),Darwin)
 CGO_OPT_CFLAGS += -Wno-gnu-folding-constant
 endif
 
+# sqlite-vec 需要 SQLITE_INNOCUOUS（SQLite 3.31+）；旧版 sqlite3.h 无该宏。检测用 grep SQLITE_INNOCUOUS，避免 Makefile 将 # 当作注释。
+NEED_SQLITE_INNOC_DEF := $(shell test -f /usr/include/sqlite3.h && ! grep -q SQLITE_INNOCUOUS /usr/include/sqlite3.h && echo 1)
+ifneq ($(strip $(NEED_SQLITE_INNOC_DEF)),)
+CGO_OPT_CFLAGS += -DSQLITE_INNOCUOUS=0x000200000
+endif
+
 # Milvus 与 Qdrant 的 gRPC 生成代码均注册同名 common.proto，默认会 panic（见 protobuf FAQ）
 PROTO_CONFLICT_LDFLAG := -X google.golang.org/protobuf/reflect/protoregistry.conflictPolicy=warn
 
@@ -106,7 +112,8 @@ build-bin: build-web build-admin-web
 # Build the application（输出到 bin/，避免与未带 ldflags 的旧 ./bin/WeKnora 混淆）
 build:
 	mkdir -p bin
-	go build -ldflags="$(PROTO_CONFLICT_LDFLAG)" -o bin/$(BINARY_NAME) $(MAIN_PATH)
+	CGO_ENABLED=1 CGO_CFLAGS="$(CGO_OPT_CFLAGS)" CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" \
+		go build -ldflags="$(PROTO_CONFLICT_LDFLAG)" -o bin/$(BINARY_NAME) $(MAIN_PATH)
 
 # Run the application
 run: build

@@ -277,7 +277,15 @@ func (t *WriteFileTool) Execute(ctx context.Context, args json.RawMessage) (*typ
 		return &types.ToolResult{Success: false, Error: workspace.MaskFromContext(ctx, fmt.Sprintf("write failed: %v", err))}, nil
 	}
 
-	return &types.ToolResult{Success: true, Output: "OK"}, nil
+	return &types.ToolResult{
+		Success: true,
+		Output:  fmt.Sprintf("OK — wrote %s", reqPath),
+		Data: map[string]interface{}{
+			"path":      reqPath,
+			"file_path": reqPath,
+			"file_url":  reqPath,
+		},
+	}, nil
 }
 
 // StrReplaceTool replaces a unique substring in a file.
@@ -335,7 +343,15 @@ func (t *StrReplaceTool) Execute(ctx context.Context, args json.RawMessage) (*ty
 	if err := os.WriteFile(resolved, []byte(content), 0o644); err != nil {
 		return &types.ToolResult{Success: false, Error: workspace.MaskFromContext(ctx, fmt.Sprintf("write failed: %v", err))}, nil
 	}
-	return &types.ToolResult{Success: true, Output: "OK"}, nil
+	return &types.ToolResult{
+		Success: true,
+		Output:  fmt.Sprintf("OK — updated %s", reqPath),
+		Data: map[string]interface{}{
+			"path":      reqPath,
+			"file_path": reqPath,
+			"file_url":  reqPath,
+		},
+	}, nil
 }
 
 // LsTool lists a directory (one-level tree expansion like metanote).

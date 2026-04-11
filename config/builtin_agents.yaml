@@ -8,10 +8,8 @@ builtin_agents:
     avatar: ""
     is_builtin: true
     i18n:
+
       default:
-        name: "Smart Reasoning"
-        description: "ReAct reasoning framework with multi-step thinking and tool calling"
-      zh-CN:
         name: "智能推理"
         description: "ReAct 推理框架，支持多步思考与工具调用"
       zh-TW:

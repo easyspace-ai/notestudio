@@ -50,8 +50,10 @@ var studioKindBySkillName = map[string]string{
 	"webpage-generator":  types.StudioKindHTML,
 	"podcast-generation": types.StudioKindAudio,
 	// 以下技能无明确「课件/播客」语义，映射为 html 以便进入 Studio 快贴；用户仍走同一套 Studio 任务（可再在 SKILL/weknora_studio 细化）。
-	"deep-research":    types.StudioKindHTML,
-	"image-generation": types.StudioKindHTML,
+	"deep-research":      types.StudioKindHTML,
+	"image-generation":   types.StudioKindHTML,
+	"ppt-agent-workflow": types.StudioKindSlides,
+	"ppt-agent":          types.StudioKindSlides,
 }
 
 // Optional Chinese / product copy when there is no weknora_studio block.
@@ -63,6 +65,8 @@ var studioQuickDisplayByName = map[string]struct {
 	"podcast-generation": {Label: "生成播客音频", DefaultTitle: "播客"},
 	"deep-research":      {Label: "深度检索 / 调研", DefaultTitle: "调研网页"},
 	"image-generation":   {Label: "图像生成", DefaultTitle: "视觉内容"},
+	"ppt-agent-workflow": {Label: "PPT 智能工作流", DefaultTitle: "PPT演示"},
+	"ppt-agent":          {Label: "PPT 智能代理", DefaultTitle: "PPT演示"},
 }
 
 func inferStudioKindFromSkill(name, description string) (kind string, ok bool) {
