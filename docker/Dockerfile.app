@@ -14,12 +14,16 @@ ENV GOPRIVATE=${GOPRIVATE_ARG}
 ENV GOPROXY=${GOPROXY_ARG}
 ENV GOSUMDB=${GOSUMDB_ARG}
 
-# Install dependencies
+# 先勿替换镜像：国内源若 TLS/证书与 slim 内置信任不一致，会导致 apt 无法拉索引、又装不上 ca-certificates。
+# 用官方源装好 ca-certificates 后再换源（APK_MIRROR_ARG 实为 Debian apt 镜像主机名，见 compose .env）。
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 RUN if [ -n "$APK_MIRROR_ARG" ]; then \
         sed -i "s@deb.debian.org@${APK_MIRROR_ARG}@g" /etc/apt/sources.list.d/debian.sources; \
     fi && \
     apt-get update && \
-    apt-get install -y git build-essential libsqlite3-dev
+    apt-get install -y git build-essential libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install migrate tool
 RUN go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
@@ -57,6 +61,9 @@ ARG APK_MIRROR_ARG
 # Create a non-root user first
 RUN useradd -m -s /bin/bash appuser
 
+# debian-slim 常无完整 CA；若先 sed 成国内镜像再 apt，易出现 HTTPS 校验失败且无法安装 ca-certificates 的死循环。
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 RUN if [ -n "$APK_MIRROR_ARG" ]; then \
         sed -i "s@deb.debian.org@${APK_MIRROR_ARG}@g" /etc/apt/sources.list.d/debian.sources; \
     fi && \
