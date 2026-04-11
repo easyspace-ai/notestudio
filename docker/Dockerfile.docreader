@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y \
 
 # 检查是否存在本地protoc安装包，如果存在则离线安装，否则在线安装
 ARG TARGETARCH
-COPY packages/ /app/packages/
+# COPY packages/ /app/packages/  # 离线安装时需要本地protoc安装包
 RUN echo "检查本地protoc安装包..." && \
     case ${TARGETARCH} in \
         "amd64") PROTOC_ARCH="x86_64" ;; \
