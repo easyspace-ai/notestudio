@@ -35,6 +35,7 @@ import {
   mergeArtifactLists,
   type WeKnoraSessionArtifact,
 } from "@/lib/weknoraChatArtifacts";
+import { uuid } from "@/core/utils/uuid";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -93,7 +94,7 @@ function buildStreamEventID(e: WeKnoraStreamResponse): string {
   const d = (e.data ?? {}) as Record<string, unknown>;
   const eventID = typeof d.event_id === "string" ? d.event_id : undefined;
   const toolCallID = typeof d.tool_call_id === "string" ? d.tool_call_id : undefined;
-  return `${e.response_type}:${eventID ?? toolCallID ?? crypto.randomUUID()}`;
+  return `${e.response_type}:${eventID ?? toolCallID ?? uuid()}`;
 }
 
 function extractToolName(e: WeKnoraStreamResponse): string {
